@@ -25,7 +25,7 @@ namespace Cattas
         RectInt exitZone;
 
         readonly int[] traitsLeft = new int[CatTraits.Count];
-        CatTrait selectedTrait = CatTrait.Scratcher;
+        CatTrait selectedTrait = CatTrait.LitterLord;
 
         int released, saved, lost, ticksUntilNextCat;
         bool fastForward;
@@ -122,8 +122,8 @@ namespace Cattas
 
             // How many of each trait the player gets on this level
             for (int i = 0; i < traitsLeft.Length; i++) traitsLeft[i] = 0;
-            traitsLeft[(int)CatTrait.Scratcher] = 3;
-            selectedTrait = CatTrait.Scratcher;
+            traitsLeft[(int)CatTrait.LitterLord] = 3;
+            selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear
             spawnPoint = new Vector2Int(70, 272);

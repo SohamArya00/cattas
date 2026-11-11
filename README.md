@@ -8,8 +8,8 @@ Made with **Unity 6** (Universal 2D / URP).
 **Step 1 – Grey-box prototype ✅**
 Cats spawn from a hatch, walk, climb small bumps, turn at walls, fall (and splat if the drop is too high), and get saved at the exit. The ground is destructible pixel-by-pixel.
 
-**Step 2 – Trait bar + Scratcher ✅**
-A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a trait, then click a cat. The **Scratcher** digs straight down through the ground. Test level: the exit is on the floor below, so you have to dig to reach it.
+**Step 2 – Trait bar + Litter Lord ✅**
+A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a trait, then click a cat. The **Litter Lord** digs straight down through the ground. Test level: the exit is on the floor below, so you have to dig to reach it.
 
 ## How to run
 1. Open the project in Unity 6.

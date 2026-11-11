@@ -12,8 +12,8 @@ namespace Cattas
         public const int MaxStepDown = 3;     // can walk down bumps this tall without "falling"
         public const int FallSpeed = 3;       // pixels per step while falling
         public const int SafeFallHeight = 60; // fall further than this and... splat
-        public const int DigTicksPerRow = 4;  // Scratcher digs one pixel row every 4 steps
-        public const int DigHalfWidth = 4;    // Scratcher hole is 9 pixels wide
+        public const int DigTicksPerRow = 4;  // Litter Lord digs one pixel row every 4 steps
+        public const int DigHalfWidth = 4;    // Litter Lord hole is 9 pixels wide
 
         public CatState State { get; private set; }
         public int X => x;
@@ -79,7 +79,7 @@ namespace Cattas
         {
             switch (trait)
             {
-                case CatTrait.Scratcher:
+                case CatTrait.LitterLord:
                     if (State != CatState.Walking) return false; // must be standing on ground
                     State = CatState.Digging;
                     digTimer = 0;

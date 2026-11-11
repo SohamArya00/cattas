@@ -11,10 +11,10 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
 ## Cat Traits
 | Classic skill | Cat Trait | Behaviour |
 |---|---|---|
-| Digger | **Scratcher** | Digs straight down |
+| Digger | **Litter Lord** | Digs straight down, very seriously |
 | Floater | **Fluffchute** | Puffs up fur, survives any fall |
 | Blocker | **Loaf** | Sits as a cat loaf; others turn around |
-| Miner | **Burrower** | Digs diagonally down |
+| Miner | **Scratcher** | Claws diagonally down |
 | Climber | **Clawber** | Climbs vertical walls |
 | Basher | **Headbutter** | Tunnels horizontally through a wall |
 | Bomber | **Hissy Fit** | 5s countdown, then POOF – blasts terrain; cat zips home dizzy (not counted as saved) |
@@ -39,6 +39,7 @@ Rewards: trophies, cosmetics, bonus levels.
 
 ## Cosmetics
 Easter eggs and side quests unlock cat appearances: coat colours, hats, and full transformations (dinosaurs, dragons, ...). Fully customisable cattas.
+(Saved for later: **"Number Two"** – a special move later in the game.)
 (Joke idea parked: a "drunk lads walking home from the pub" skin pack.)
 
 ## Home hub
@@ -58,7 +59,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 ## Roadmap
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
-- [x] Step 2 – Trait bar UI + Scratcher
+- [x] Step 2 – Trait bar UI + Litter Lord
 - [ ] Step 3 – Remaining 7 traits
 - [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [ ] Step 5 – Scrolling/zoom camera, menus, save data
