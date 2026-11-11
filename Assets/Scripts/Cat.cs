@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Splatted, Saved, Lost }
+    public enum CatState { Falling, Walking, Digging, Splatted, Saved, Lost }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -12,12 +12,18 @@ namespace Cattas
         public const int MaxStepDown = 3;     // can walk down bumps this tall without "falling"
         public const int FallSpeed = 3;       // pixels per step while falling
         public const int SafeFallHeight = 60; // fall further than this and... splat
+        public const int DigTicksPerRow = 4;  // Scratcher digs one pixel row every 4 steps
+        public const int DigHalfWidth = 4;    // Scratcher hole is 9 pixels wide
 
         public CatState State { get; private set; }
+        public int X => x;
+        public int Y => y;
 
         int x, y;            // feet position in level pixels
         int dir = 1;         // 1 = right, -1 = left
         int fallDistance;
+        int digTimer;
+        bool wiggle;
 
         GameBootstrap game;
         DiggableGround ground;
@@ -43,8 +49,9 @@ namespace Cattas
         {
             if (State == CatState.Walking) Walk();
             else if (State == CatState.Falling) Fall();
+            else if (State == CatState.Digging) Dig();
 
-            if (State == CatState.Walking || State == CatState.Falling)
+            if (IsActive)
             {
                 if (game.IsAtExit(x, y))
                 {
@@ -62,6 +69,47 @@ namespace Cattas
                 }
             }
             UpdateVisual();
+        }
+
+        bool IsActive => State == CatState.Walking || State == CatState.Falling || State == CatState.Digging;
+
+        // Called when the player clicks this cat with a trait selected.
+        // Returns true if the cat accepted it (so the trait gets used up).
+        public bool TryGiveTrait(CatTrait trait)
+        {
+            switch (trait)
+            {
+                case CatTrait.Scratcher:
+                    if (State != CatState.Walking) return false; // must be standing on ground
+                    State = CatState.Digging;
+                    digTimer = 0;
+                    return true;
+                default:
+                    return false; // not built yet
+            }
+        }
+
+        void Dig()
+        {
+            if (++digTimer < DigTicksPerRow) return;
+            digTimer = 0;
+
+            // Is there any ground left under us to scratch?
+            bool groundBelow = false;
+            for (int dx = -DigHalfWidth; dx <= DigHalfWidth; dx++)
+                if (ground.IsSolid(x + dx, y - 1)) { groundBelow = true; break; }
+
+            if (!groundBelow)
+            {
+                // Broke through! Back to normal: fall, then walk on.
+                State = CatState.Falling;
+                fallDistance = 0;
+                return;
+            }
+
+            ground.CarveRect(x - DigHalfWidth, y - 1, x + DigHalfWidth + 1, y);
+            y--;
+            wiggle = !wiggle; // flip side to side so it looks like scratching
         }
 
         void Walk()
@@ -118,7 +166,7 @@ namespace Cattas
         void UpdateVisual()
         {
             transform.localPosition = new Vector3(x + 0.5f, y, 0f);
-            sr.flipX = dir < 0;
+            sr.flipX = (dir < 0) ^ (State == CatState.Digging && wiggle);
         }
     }
 }

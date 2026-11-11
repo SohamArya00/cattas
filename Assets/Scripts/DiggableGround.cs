@@ -95,6 +95,22 @@ namespace Cattas
             }
         }
 
+        // Remove ground in a rectangle (x1/y1 not included).
+        public void CarveRect(int x0, int y0, int x1, int y1)
+        {
+            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+            {
+                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                {
+                    int i = y * Width + x;
+                    if (!solid[i]) continue;
+                    solid[i] = false;
+                    pixels[i] = new Color32(0, 0, 0, 0);
+                    needsRedraw = true;
+                }
+            }
+        }
+
         void LateUpdate()
         {
             if (!needsRedraw) return;

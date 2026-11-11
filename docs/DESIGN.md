@@ -58,7 +58,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 ## Roadmap
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
-- [ ] Step 2 – Trait bar UI + Scratcher
+- [x] Step 2 – Trait bar UI + Scratcher
 - [ ] Step 3 – Remaining 7 traits
 - [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [ ] Step 5 – Scrolling/zoom camera, menus, save data

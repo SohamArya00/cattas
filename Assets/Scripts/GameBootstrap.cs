@@ -13,7 +13,6 @@ namespace Cattas
         public int totalCats = 10;           // how many cats come out of the hatch
         public int catsNeeded = 7;           // how many must reach the exit to win
         public float secondsBetweenCats = 1.5f;
-        public int pawSize = 6;              // size of the test "scratch" brush
 
         const int TicksPerSecond = 30;       // game logic runs at a steady 30 steps a second
 
@@ -24,6 +23,9 @@ namespace Cattas
         readonly List<Cat> cats = new List<Cat>();
         Vector2Int spawnPoint;
         RectInt exitZone;
+
+        readonly int[] traitsLeft = new int[CatTraits.Count];
+        CatTrait selectedTrait = CatTrait.Scratcher;
 
         int released, saved, lost, ticksUntilNextCat;
         bool fastForward;
@@ -111,20 +113,26 @@ namespace Cattas
             ground = groundObj.AddComponent<DiggableGround>();
             ground.Init(LevelWidth, LevelHeight);
 
-            ground.FillRect(0, 150, 640, 190);    // long main floor (top surface at y=190)
+            ground.FillRect(0, 160, 640, 190);    // main floor (top surface at y=190)
             ground.FillRect(30, 225, 260, 245);   // upper ledge the cats start on
             ground.FillHill(330, 190, 30, 12);    // little hill to walk over
-            ground.FillRect(450, 190, 470, 300);  // tall wall blocking the exit!
+            ground.FillRect(450, 190, 470, 300);  // tall wall blocking the way
+            ground.FillRect(0, 100, 640, 140);    // lower floor, where the exit is
             ground.FinishPainting();
+
+            // How many of each trait the player gets on this level
+            for (int i = 0; i < traitsLeft.Length; i++) traitsLeft[i] = 0;
+            traitsLeft[(int)CatTrait.Scratcher] = 3;
+            selectedTrait = CatTrait.Scratcher;
 
             // Hatch where cats appear
             spawnPoint = new Vector2Int(70, 272);
             MakeBox("Hatch", new Vector2Int(58, 274), 24, 10, new Color32(70, 60, 60, 255), 1);
 
-            // Exit (a little cat-flap house)
-            MakeBox("Exit House", new Vector2Int(550, 190), 20, 26, new Color32(150, 90, 50, 255), 1);
-            MakeBox("Exit Door", new Vector2Int(555, 190), 10, 14, new Color32(40, 25, 20, 255), 2);
-            exitZone = new RectInt(556, 190, 9, 10);
+            // Exit (a little cat-flap house) on the LOWER floor - dig down to reach it!
+            MakeBox("Exit House", new Vector2Int(550, 140), 20, 26, new Color32(150, 90, 50, 255), 1);
+            MakeBox("Exit Door", new Vector2Int(555, 140), 10, 14, new Color32(40, 25, 20, 255), 2);
+            exitZone = new RectInt(556, 140, 9, 10);
         }
 
         void MakeBox(string name, Vector2Int pos, int w, int h, Color32 colour, int order)
@@ -178,7 +186,73 @@ namespace Cattas
         public void OnCatLost(Cat cat) { cats.Remove(cat); lost++; }
         bool IsFinished => released == totalCats && cats.Count == 0;
 
+        // ---------- Picking cats ----------
+        Cat CatUnderMouse(Vector2 guiMousePos)
+        {
+            var screen = new Vector3(guiMousePos.x, Screen.height - guiMousePos.y, 0f);
+            Vector3 world = cam.ScreenToWorldPoint(screen);
+            Cat best = null;
+            float bestDist = float.MaxValue;
+            foreach (var cat in cats)
+            {
+                float dx = Mathf.Abs(world.x - (cat.X + 0.5f));
+                float dy = world.y - cat.Y;
+                if (dx > 7f || dy < -3f || dy > 14f) continue;
+                float d = dx + Mathf.Abs(dy - 5f);
+                if (d < bestDist) { bestDist = d; best = cat; }
+            }
+            return best;
+        }
+
+        void TryAssign(Cat cat)
+        {
+            if (cat == null || traitsLeft[(int)selectedTrait] <= 0) return;
+            if (cat.TryGiveTrait(selectedTrait))
+                traitsLeft[(int)selectedTrait]--;
+        }
+
+        void DrawOutline(Cat cat, Color colour)
+        {
+            Vector3 a = cam.WorldToScreenPoint(new Vector3(cat.X - 6f, cat.Y - 2f, 0f));
+            Vector3 b = cam.WorldToScreenPoint(new Vector3(cat.X + 7f, cat.Y + 12f, 0f));
+            var r = Rect.MinMaxRect(a.x, Screen.height - b.y, b.x, Screen.height - a.y);
+            float t = Mathf.Max(2f, Screen.height / 400f);
+            var old = GUI.color;
+            GUI.color = colour;
+            GUI.DrawTexture(new Rect(r.xMin, r.yMin, r.width, t), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.xMin, r.yMax - t, r.width, t), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.xMin, r.yMin, t, r.height), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.xMax - t, r.yMin, t, r.height), Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+
         // ---------- On-screen text and buttons ----------
+        void DrawTraitBar(int fs, float pad)
+        {
+            float bw = fs * 6.2f, bh = fs * 3.2f, gap = fs * 0.3f;
+            float total = CatTraits.Count * bw + (CatTraits.Count - 1) * gap;
+            float x0 = (Screen.width - total) / 2f;
+            float y0 = Screen.height - pad - bh;
+            var style = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(fs * 0.8f), wordWrap = true };
+            var oldBg = GUI.backgroundColor;
+            var oldEnabled = GUI.enabled;
+
+            for (int i = 0; i < CatTraits.Count; i++)
+            {
+                var trait = (CatTrait)i;
+                bool built = CatTraits.IsImplemented(trait);
+                string label = built
+                    ? $"{CatTraits.DisplayName(trait)}\n{traitsLeft[i]}"
+                    : $"{CatTraits.DisplayName(trait)}\n(soon)";
+                GUI.enabled = built;
+                GUI.backgroundColor = (built && trait == selectedTrait) ? new Color(1f, 0.8f, 0.3f) : oldBg;
+                if (GUI.Button(new Rect(x0 + i * (bw + gap), y0, bw, bh), label, style))
+                    selectedTrait = trait;
+            }
+            GUI.enabled = oldEnabled;
+            GUI.backgroundColor = oldBg;
+        }
+
         void OnGUI()
         {
             int fs = Mathf.Max(14, Screen.height / 36);
@@ -192,7 +266,7 @@ namespace Cattas
             GUI.Label(new Rect(pad * 2, pad, fs * 28, lineH),
                 $"Cats out: {released}/{totalCats}    Saved: {saved}    Lost: {lost}", label);
             GUI.Label(new Rect(pad * 2, pad + lineH, fs * 28, lineH),
-                $"Save {catsNeeded} to win!  Click + drag to scratch away ground.", small);
+                $"Save {catsNeeded} to win!  Pick a trait below, then click a cat.", small);
 
             float bw = fs * 7;
             if (GUI.Button(new Rect(Screen.width - pad - bw, pad, bw, lineH), fastForward ? "Speed: 3x" : "Speed: 1x", button))
@@ -215,13 +289,15 @@ namespace Cattas
                 return;
             }
 
-            // The test "paw": click/drag on the level to scratch away ground.
+            DrawTraitBar(fs, pad);
+
+            // Highlight the cat under the mouse, and give it the trait on click.
             Event e = Event.current;
-            if (e.button == 0 && (e.type == EventType.MouseDown || e.type == EventType.MouseDrag))
+            Cat hovered = CatUnderMouse(e.mousePosition);
+            if (hovered != null) DrawOutline(hovered, Color.white);
+            if (e.type == EventType.MouseDown && e.button == 0 && hovered != null)
             {
-                var screen = new Vector3(e.mousePosition.x, Screen.height - e.mousePosition.y, 0f);
-                Vector3 world = cam.ScreenToWorldPoint(screen);
-                ground.Carve(Mathf.FloorToInt(world.x), Mathf.FloorToInt(world.y), pawSize);
+                TryAssign(hovered);
                 e.Use();
             }
         }
