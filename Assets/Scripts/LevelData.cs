@@ -23,6 +23,14 @@ namespace Cattas
         public int timeSeconds = 300;
         public float rate = 1.5f; // seconds between cats
         public int speed = 50;    // starting game speed in % (50 = normal). Players can only speed up from here.
+
+        // Painted art (optional) - names of files in Assets/Resources/Art (without ".bytes").
+        // foreground: the solid ground; see-through parts are air. 'X' map cells still mark stone,
+        //             and H / E still place the hatch and exit. Other map characters are ignored.
+        // background: the picture behind everything.
+        public string background = "";
+        public string foreground = "";
+        public bool showMarkers = true; // draw the plain hatch/exit boxes (turn off when the art has its own)
         public readonly int[] traits = new int[CatTraits.Count];
         public readonly List<string> rows = new List<string>();
 
@@ -31,9 +39,11 @@ namespace Cattas
         public int PixelWidth => Cols * CellSize;
         public int PixelHeight => Rows * CellSize;
 
-        public static LevelData Load(int number)
+        public static LevelData Load(int number) => Load($"level{number:00}");
+
+        public static LevelData Load(string fileName)
         {
-            var asset = Resources.Load<TextAsset>($"Levels/level{number:00}");
+            var asset = Resources.Load<TextAsset>("Levels/" + fileName);
             return asset == null ? null : Parse(asset.text);
         }
 
@@ -76,6 +86,9 @@ namespace Cattas
                     case "time": int.TryParse(val, out d.timeSeconds); break;
                     case "rate": float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out d.rate); break;
                     case "speed": int.TryParse(val, out d.speed); break;
+                    case "background": d.background = val; break;
+                    case "foreground": d.foreground = val; break;
+                    case "markers": d.showMarkers = !(val.ToLowerInvariant() == "off" || val.ToLowerInvariant() == "hidden" || val.ToLowerInvariant() == "no"); break;
                     case "traits": ParseTraits(d, val); break;
                 }
             }

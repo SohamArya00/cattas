@@ -3,6 +3,8 @@ using UnityEngine;
 
 namespace Cattas
 {
+    public enum FxKind { Dig, Smash, Hairball, Zap, Splat, Puff, Home }
+
     // The "brain" of the game. It starts itself automatically when you press Play,
     // so there is nothing to set up in the Unity editor.
     //
@@ -11,6 +13,9 @@ namespace Cattas
     {
         public const int TicksPerSecond = 30; // game logic runs at a steady 30 steps a second
 
+        // How far we are between one game step and the next (0..1) - used to make movement smooth.
+        public static float TickAlpha { get; private set; }
+
         enum GameMode { Menu, Playing, Results }
         GameMode mode = GameMode.Menu;
 
@@ -18,12 +23,18 @@ namespace Cattas
         Transform levelRoot;
         DiggableGround ground;
         Sprite catSprite;
+        Sprite[] catFrames;          // painted kitten animation (if the art exists)
+        Sprite particleSprite;
+        Texture2D menuBackdrop;
+        bool hasKitchenDemo;
+        Texture2D levelBackground;   // freed when the level is cleared
         readonly List<Cat> cats = new List<Cat>();
         readonly List<Vector2Int> spawnPoints = new List<Vector2Int>();
         readonly List<RectInt> exitZones = new List<RectInt>();
 
         // Current level
-        int levelNumber;
+        int levelNumber;             // 0 = a special level (like the Kitchen demo)
+        string levelFile;
         int levelCount;
         LevelData level;
         int levelWidth = 640, levelHeight = 360;
@@ -48,6 +59,14 @@ namespace Cattas
             new Color(1f, 0.62f, 0.25f),    // ginger
             new Color(0.62f, 0.62f, 0.68f), // grey
             new Color(1f, 0.93f, 0.78f),    // cream
+        };
+
+        // Painted kittens keep their own colours, with just a tiny bit of variety
+        static readonly Color[] PaintedTints =
+        {
+            Color.white,
+            new Color(1f, 0.96f, 0.9f),
+            new Color(0.94f, 0.95f, 1f),
         };
 
         static readonly string[] CatArt =
@@ -91,7 +110,13 @@ namespace Cattas
         {
             SetupCamera();
             catSprite = SpriteMaker.FromArt(CatArt, new Vector2(0.5f, 0f));
+            // Painted kitten: 48x40 frames at 4x detail. Drawn slightly bigger than its 12x10 "body" so it reads well.
+            catFrames = Art.SliceSheet(Art.Load("cat_sheet"), 48, 4f / 1.25f, new Vector2(0.5f, 0.02f));
+            particleSprite = SpriteMaker.Solid(1, 1, new Color32(255, 255, 255, 255), new Vector2(0.5f, 0.5f));
+            menuBackdrop = Art.Load("kitchen_bg");
+            Sfx.Init(gameObject);
             levelCount = LevelData.CountLevels();
+            hasKitchenDemo = Resources.Load<TextAsset>("Levels/kitchen") != null;
             mode = GameMode.Menu;
         }
 
@@ -115,6 +140,8 @@ namespace Cattas
 
         void RecordResult()
         {
+            Sfx.Play(saved >= level.need ? "win" : "lose", 1f, 0f);
+            if (levelNumber <= 0) return; // special levels don't affect progress
             if (saved > PlayerPrefs.GetInt(BestKey(levelNumber), -1))
                 PlayerPrefs.SetInt(BestKey(levelNumber), saved);
             if (saved >= level.need && levelNumber + 1 > Unlocked)
@@ -123,16 +150,19 @@ namespace Cattas
         }
 
         // ---------- Building a level from its file ----------
-        void StartLevel(int number)
+        void StartLevel(int number) => StartLevel(number, $"level{number:00}");
+
+        void StartLevel(int number, string file)
         {
-            var data = LevelData.Load(number);
+            var data = LevelData.Load(file);
             if (data == null || data.Rows == 0 || data.Cols == 0)
             {
-                Debug.LogError($"Cattas: couldn't load level {number} (Assets/Resources/Levels/level{number:00}.txt)");
+                Debug.LogError($"Cattas: couldn't load level '{file}' (Assets/Resources/Levels/{file}.txt)");
                 mode = GameMode.Menu;
                 return;
             }
             levelNumber = number;
+            levelFile = file;
             level = data;
             BuildLevel();
             mode = GameMode.Playing;
@@ -140,6 +170,8 @@ namespace Cattas
 
         void ClearLevel()
         {
+            if (levelBackground != null) Destroy(levelBackground);
+            levelBackground = null;
             if (levelRoot != null) Destroy(levelRoot.gameObject);
             levelRoot = null;
             cats.Clear();
@@ -165,10 +197,34 @@ namespace Cattas
             levelRoot = new GameObject("Level " + levelNumber).transform;
             levelRoot.SetParent(transform, false);
 
+            // Painted art (optional)
+            Texture2D fgArt = Art.Load(level.foreground);
+            Texture2D bgArt = Art.Load(level.background);
+            levelBackground = bgArt;
+            bool painted = fgArt != null;
+            int artScale = painted ? Mathf.Max(1, Mathf.RoundToInt(fgArt.width / (float)levelWidth)) : 1;
+            // Painted levels sit on a cosy dark frame; plain levels get the sky
+            cam.backgroundColor = bgArt != null ? new Color(0.24f, 0.17f, 0.15f) : new Color(0.55f, 0.76f, 0.95f);
+
+            if (bgArt != null)
+            {
+                var bgObj = new GameObject("Background");
+                bgObj.transform.SetParent(levelRoot, false);
+                var bsr = bgObj.AddComponent<SpriteRenderer>();
+                bsr.sprite = Sprite.Create(bgArt, new Rect(0, 0, bgArt.width, bgArt.height), Vector2.zero, bgArt.width / (float)levelWidth);
+                bsr.material = SpriteMaterial;
+                bsr.sortingOrder = -10;
+            }
+
             var groundObj = new GameObject("Ground");
             groundObj.transform.SetParent(levelRoot, false);
             ground = groundObj.AddComponent<DiggableGround>();
-            ground.Init(levelWidth, levelHeight);
+            ground.Init(levelWidth, levelHeight, artScale);
+            if (painted)
+            {
+                ground.ApplyArt(fgArt);
+                Destroy(fgArt);
+            }
 
             const int cs = LevelData.CellSize;
             for (int row = 0; row < level.Rows; row++)
@@ -177,14 +233,21 @@ namespace Cattas
                 for (int col = 0; col < level.Cols; col++)
                 {
                     int x0 = col * cs;
-                    switch (level.Cell(col, row))
+                    char c = level.Cell(col, row);
+                    if (c == 'H') { AddHatch(x0 + cs / 2, y0); continue; }
+                    if (c == 'E') { AddExit(x0 + cs / 2, y0); continue; }
+                    if (painted)
+                    {
+                        // Painted level: the art decides what's solid; the map only marks stone.
+                        if (c == 'X') ground.MakeHard(x0, y0, x0 + cs, y0 + cs);
+                        continue;
+                    }
+                    switch (c)
                     {
                         case '#': ground.FillRect(x0, y0, x0 + cs, y0 + cs); break;
                         case 'X': ground.FillHardRect(x0, y0, x0 + cs, y0 + cs); break;
                         case '/': ground.FillRamp(x0, y0, cs, true); break;
                         case '\\': ground.FillRamp(x0, y0, cs, false); break;
-                        case 'H': AddHatch(x0 + cs / 2, y0); break;
-                        case 'E': AddExit(x0 + cs / 2, y0); break;
                     }
                 }
             }
@@ -198,13 +261,16 @@ namespace Cattas
         void AddHatch(int centreX, int bottomY)
         {
             spawnPoints.Add(new Vector2Int(centreX, bottomY - 2));
-            MakeBox("Hatch", new Vector2Int(centreX - 12, bottomY), 24, 10, new Color32(70, 60, 60, 255), 1);
+            if (level.showMarkers) MakeBox("Hatch", new Vector2Int(centreX - 12, bottomY), 24, 10, new Color32(70, 60, 60, 255), 1);
         }
 
         void AddExit(int centreX, int floorY)
         {
-            MakeBox("Exit House", new Vector2Int(centreX - 10, floorY), 20, 26, new Color32(150, 90, 50, 255), 1);
-            MakeBox("Exit Door", new Vector2Int(centreX - 5, floorY), 10, 14, new Color32(40, 25, 20, 255), 2);
+            if (level.showMarkers)
+            {
+                MakeBox("Exit House", new Vector2Int(centreX - 10, floorY), 20, 26, new Color32(150, 90, 50, 255), 1);
+                MakeBox("Exit Door", new Vector2Int(centreX - 5, floorY), 10, 14, new Color32(40, 25, 20, 255), 2);
+            }
             exitZones.Add(new RectInt(centreX - 4, floorY, 9, 10));
         }
 
@@ -234,6 +300,7 @@ namespace Cattas
             float viewHeight = levelHeight * 1.12f;
             cam.orthographicSize = viewHeight / 2f;
             float camY = levelHeight * 1.02f - viewHeight / 2f;
+            baseCamY = camY;
             float startX = spawnPoints.Count > 0 ? spawnPoints[0].x : levelWidth / 2f;
             cam.transform.position = new Vector3(startX, camY, -10f);
             ClampCamera();
@@ -247,6 +314,8 @@ namespace Cattas
             else p.x = Mathf.Clamp(p.x, halfW, levelWidth - halfW);
             cam.transform.position = p;
         }
+
+        float baseCamY;
 
         float KeyboardScroll()
         {
@@ -284,6 +353,7 @@ namespace Cattas
                 GameTick();
             }
             if (safety >= 20) tickTimer = 0f;
+            TickAlpha = Mathf.Clamp01(tickTimer / tickLength);
         }
 
         void GameTick()
@@ -311,9 +381,13 @@ namespace Cattas
             var go = new GameObject("Cat " + (released + 1));
             go.transform.SetParent(levelRoot, false);
             var cat = go.AddComponent<Cat>();
-            cat.Init(this, ground, spawn.x, spawn.y, catSprite, CatColours[released % CatColours.Length]);
+            if (catFrames != null)
+                cat.Init(this, ground, spawn.x, spawn.y, catFrames[0], PaintedTints[released % PaintedTints.Length], catFrames);
+            else
+                cat.Init(this, ground, spawn.x, spawn.y, catSprite, CatColours[released % CatColours.Length]);
             cats.Add(cat);
             released++;
+            Sfx.Play("pop", 0.7f);
         }
 
         public bool IsAtExit(int x, int y)
@@ -337,6 +411,89 @@ namespace Cattas
                 foreach (var cat in cats)
                     if (cat.State != CatState.Blocking) return false;
                 return true;
+            }
+        }
+
+        // ---------- Effects: particles + sounds ----------
+        public void Fx(FxKind kind, int x, int y)
+        {
+            Color dirt = ground != null ? ground.ColourAt(x, y) : Color.gray;
+            switch (kind)
+            {
+                case FxKind.Dig:
+                    Burst(x, y, dirt, 3, 40f, 50f, 1.4f, 0.5f, -260f);
+                    Sfx.Play("scratch", 0.35f, 0.07f);
+                    break;
+                case FxKind.Smash:
+                    Burst(x, y, dirt, 4, 70f, 40f, 1.8f, 0.55f, -260f);
+                    Sfx.Play("smash", 0.4f, 0.09f);
+                    break;
+                case FxKind.Hairball:
+                    Burst(x, y, new Color(0.62f, 0.55f, 0.47f), 5, 30f, 30f, 1.2f, 0.5f, -120f);
+                    Sfx.Play("hack", 0.8f, 0.1f);
+                    break;
+                case FxKind.Zap:
+                    Burst(x, y, dirt, 18, 120f, 80f, 2f, 0.8f, -300f);
+                    Burst(x, y, new Color(1f, 0.95f, 0.4f), 12, 140f, 60f, 1.2f, 0.4f, 0f);
+                    Shake(0.25f, 3f);
+                    Sfx.Play("zap", 1f, 0f);
+                    break;
+                case FxKind.Splat:
+                    Burst(x, y + 3, new Color(1f, 1f, 1f, 0.9f), 10, 60f, 20f, 1.6f, 0.6f, -100f);
+                    Sfx.Play("splat", 0.8f, 0.05f);
+                    break;
+                case FxKind.Puff:
+                    Burst(x, y, new Color(1f, 1f, 1f, 0.85f), 8, 35f, 10f, 2f, 0.6f, 0f);
+                    Sfx.Play("puff", 0.6f, 0.08f);
+                    break;
+                case FxKind.Home:
+                    Burst(x, y + 6, new Color(1f, 0.55f, 0.65f), 7, 30f, 70f, 1.6f, 1.0f, -40f);
+                    Burst(x, y + 6, new Color(1f, 0.92f, 0.45f), 6, 40f, 60f, 1.0f, 0.8f, -40f);
+                    Sfx.Play("home", 0.8f, 0.06f);
+                    break;
+            }
+        }
+
+        // Spray some particles out from a point.
+        void Burst(float x, float y, Color colour, int count, float spread, float up, float size, float life, float gravity)
+        {
+            if (levelRoot == null || Particle.Alive > 500) return;
+            for (int i = 0; i < count; i++)
+            {
+                var go = new GameObject("p");
+                go.transform.SetParent(levelRoot, false);
+                go.transform.localPosition = new Vector3(x + Random.Range(-2f, 2f), y + Random.Range(-1f, 2f), 0f);
+                float s = size * Random.Range(0.6f, 1.3f);
+                go.transform.localScale = new Vector3(s, s, 1f);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = particleSprite;
+                sr.material = SpriteMaterial;
+                sr.color = colour * Random.Range(0.85f, 1.1f);
+                sr.sortingOrder = 8;
+                var p = go.AddComponent<Particle>();
+                p.velocity = new Vector2(Random.Range(-spread, spread), Random.Range(up * 0.4f, up * 1.2f));
+                p.life = life * Random.Range(0.7f, 1.2f);
+                p.gravity = gravity;
+                p.spin = Random.Range(-360f, 360f);
+            }
+        }
+
+        float shakeTime, shakeAmount;
+        void Shake(float time, float amount) { shakeTime = time; shakeAmount = amount; }
+
+        void LateUpdate()
+        {
+            if (cam == null) return;
+            if (shakeTime > 0f && mode == GameMode.Playing)
+            {
+                shakeTime -= Time.deltaTime;
+                var p = cam.transform.position;
+                cam.transform.position = new Vector3(p.x, baseCamY + Random.Range(-shakeAmount, shakeAmount), p.z);
+            }
+            else if (levelRoot != null)
+            {
+                var p = cam.transform.position;
+                cam.transform.position = new Vector3(p.x, baseCamY, p.z);
             }
         }
 
@@ -403,7 +560,10 @@ namespace Cattas
         {
             if (cat == null || traitsLeft[(int)selectedTrait] <= 0) return;
             if (cat.TryGiveTrait(selectedTrait))
+            {
                 traitsLeft[(int)selectedTrait]--;
+                Sfx.Play("click", 0.8f, 0f);
+            }
         }
 
         void DrawOutline(Cat cat, Color colour)
@@ -422,17 +582,57 @@ namespace Cattas
         }
 
         // ---------- On-screen text and buttons ----------
+        // Colours for the cosy retro-kitchen look
+        static readonly Color InkCol = new Color(0.31f, 0.21f, 0.18f);
+        static readonly Color CreamCol = new Color(1f, 0.97f, 0.92f, 0.94f);
+        static readonly Color MintCol = new Color(0.66f, 0.86f, 0.79f);
+        static readonly Color PeachCol = new Color(1f, 0.74f, 0.62f);
+
         int fs;
-        GUIStyle label, small, button, big;
+        GUIStyle label, small, button, big, panel, selectedButton, darkLabel, darkSmall;
+        static Texture2D texPanel, texBtn, texBtnHover, texBtnDown, texBtnSel, texBtnOff;
 
         void MakeStyles()
         {
+            if (texPanel == null)
+            {
+                texPanel = Art.RoundedBox(CreamCol, new Color(0.55f, 0.42f, 0.36f, 0.9f));
+                texBtn = Art.RoundedBox(MintCol, new Color(0.38f, 0.6f, 0.53f));
+                texBtnHover = Art.RoundedBox(new Color(0.76f, 0.92f, 0.86f), new Color(0.38f, 0.6f, 0.53f));
+                texBtnDown = Art.RoundedBox(new Color(0.55f, 0.78f, 0.7f), new Color(0.3f, 0.5f, 0.44f));
+                texBtnSel = Art.RoundedBox(PeachCol, new Color(0.75f, 0.45f, 0.36f), 32, 11f, 3f);
+                texBtnOff = Art.RoundedBox(new Color(0.85f, 0.85f, 0.83f, 0.8f), new Color(0.6f, 0.6f, 0.6f, 0.8f));
+            }
             fs = Mathf.Max(14, Screen.height / 36);
+            var border = new RectOffset(12, 12, 12, 12);
+
             label = new GUIStyle(GUI.skin.label) { fontSize = fs, fontStyle = FontStyle.Bold };
             label.normal.textColor = Color.white;
             small = new GUIStyle(label) { fontSize = Mathf.RoundToInt(fs * 0.8f), fontStyle = FontStyle.Normal, wordWrap = true };
-            button = new GUIStyle(GUI.skin.button) { fontSize = fs, wordWrap = true };
             big = new GUIStyle(label) { fontSize = fs * 2, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+            darkLabel = new GUIStyle(label); darkLabel.normal.textColor = InkCol;
+            darkSmall = new GUIStyle(small); darkSmall.normal.textColor = InkCol;
+
+            panel = new GUIStyle { border = border };
+            panel.normal.background = texPanel;
+
+            button = new GUIStyle { fontSize = fs, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true, border = border,
+                                    padding = new RectOffset(6, 6, 4, 4) };
+            button.normal.background = texBtn; button.hover.background = texBtnHover; button.active.background = texBtnDown;
+            button.normal.textColor = button.hover.textColor = button.active.textColor = InkCol;
+
+            selectedButton = new GUIStyle(button);
+            selectedButton.normal.background = selectedButton.hover.background = texBtnSel;
+        }
+
+        // Text with a soft shadow, for titles over pictures
+        void ShadowLabel(Rect r, string text, GUIStyle style)
+        {
+            var old = style.normal.textColor;
+            style.normal.textColor = new Color(0.25f, 0.15f, 0.12f, 0.6f);
+            GUI.Label(new Rect(r.x + fs * 0.12f, r.y + fs * 0.12f, r.width, r.height), text, style);
+            style.normal.textColor = old;
+            GUI.Label(r, text, style);
         }
 
         void OnGUI()
@@ -448,23 +648,42 @@ namespace Cattas
 
         void DrawMenu()
         {
-            var title = new GUIStyle(big) { fontSize = fs * 4 };
-            GUI.Label(new Rect(0, Screen.height * 0.05f, Screen.width, fs * 5), "CATTAS", title);
-            GUI.Label(new Rect(0, Screen.height * 0.05f + fs * 4.5f, Screen.width, fs * 2),
-                "Get the cats home!", new GUIStyle(label) { alignment = TextAnchor.MiddleCenter });
-
-            if (levelCount == 0)
+            if (menuBackdrop != null)
             {
-                GUI.Label(new Rect(0, Screen.height * 0.5f, Screen.width, fs * 3),
-                    "No levels found in Assets/Resources/Levels", new GUIStyle(label) { alignment = TextAnchor.MiddleCenter });
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), menuBackdrop, ScaleMode.ScaleAndCrop);
+                var old = GUI.color;
+                GUI.color = new Color(1f, 0.97f, 0.92f, 0.35f);
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+                GUI.color = old;
+            }
+
+            var title = new GUIStyle(big) { fontSize = fs * 4 };
+            title.normal.textColor = new Color(1f, 0.98f, 0.94f);
+            ShadowLabel(new Rect(0, Screen.height * 0.04f, Screen.width, fs * 5), "CATTAS", title);
+            var sub = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
+            sub.normal.textColor = new Color(1f, 0.98f, 0.94f);
+            ShadowLabel(new Rect(0, Screen.height * 0.04f + fs * 4.4f, Screen.width, fs * 2), "Help the kittens find their way home!", sub);
+
+            // The Kitchen demo
+            float dw = fs * 16f, dh = fs * 3.2f;
+            var demoRect = new Rect((Screen.width - dw) / 2f, Screen.height * 0.25f, dw, dh);
+            if (hasKitchenDemo && GUI.Button(demoRect, "Play the Kitchen Demo", selectedButton))
+            {
+                StartLevel(0, "kitchen");
                 return;
             }
 
+            if (levelCount == 0) return;
+
             const int perRow = 5;
-            float bw = fs * 9f, bh = fs * 4f, gap = fs * 0.6f;
+            float bw = fs * 9f, bh = fs * 3.4f, gap = fs * 0.6f;
             float gridW = perRow * bw + (perRow - 1) * gap;
+            float rows = Mathf.Ceil(levelCount / (float)perRow);
             float x0 = (Screen.width - gridW) / 2f;
-            float y0 = Screen.height * 0.32f;
+            float y0 = demoRect.yMax + fs * 2.2f;
+            GUI.Box(new Rect(x0 - fs, y0 - fs * 1.9f, gridW + fs * 2, rows * (bh + gap) + fs * 2.4f), GUIContent.none, panel);
+            GUI.Label(new Rect(x0, y0 - fs * 1.6f, gridW, fs * 1.4f), "Training levels", darkLabel);
+
             int unlocked = Unlocked;
             var oldEnabled = GUI.enabled;
             for (int i = 1; i <= levelCount; i++)
@@ -473,20 +692,21 @@ namespace Cattas
                 var r = new Rect(x0 + col * (bw + gap), y0 + row * (bh + gap), bw, bh);
                 bool open = i <= unlocked;
                 int best = PlayerPrefs.GetInt(BestKey(i), -1);
-                string text = open ? (best >= 0 ? $"Level {i}\nBest: {best} saved" : $"Level {i}") : $"Level {i}\n(locked)";
+                string text = open ? (best >= 0 ? $"Level {i}\nBest: {best}" : $"Level {i}") : $"Level {i}\n(locked)";
                 GUI.enabled = open;
-                if (GUI.Button(r, text, button)) StartLevel(i);
+                if (GUI.Button(r, text, button)) { GUI.enabled = oldEnabled; StartLevel(i); return; }
             }
             GUI.enabled = oldEnabled;
 
             // Little helpers for testing
-            float hb = fs * 9f;
-            if (GUI.Button(new Rect(Screen.width - hb - fs, Screen.height - fs * 2.5f, hb, fs * 1.8f), "Unlock all (test)", small))
+            float hb = fs * 9f, hh = fs * 1.8f;
+            var tiny = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.7f) };
+            if (GUI.Button(new Rect(Screen.width - hb - fs, Screen.height - hh - fs * 0.7f, hb, hh), "Unlock all (test)", tiny))
             {
                 PlayerPrefs.SetInt(UnlockedKey, levelCount);
                 PlayerPrefs.Save();
             }
-            if (GUI.Button(new Rect(Screen.width - hb * 2 - fs * 1.5f, Screen.height - fs * 2.5f, hb, fs * 1.8f), "Reset progress", small))
+            if (GUI.Button(new Rect(Screen.width - hb * 2 - fs * 1.5f, Screen.height - hh - fs * 0.7f, hb, hh), "Reset progress", tiny))
             {
                 PlayerPrefs.DeleteKey(UnlockedKey);
                 for (int i = 1; i <= levelCount; i++) PlayerPrefs.DeleteKey(BestKey(i));
@@ -500,12 +720,12 @@ namespace Cattas
 
             // Top-left info panel
             float panelW = fs * 30;
-            GUI.Box(new Rect(pad, pad, panelW, lineH * 3.4f), GUIContent.none);
+            GUI.Box(new Rect(pad, pad, panelW, lineH * 3.6f), GUIContent.none, panel);
             int secs = Mathf.Max(0, Mathf.CeilToInt(ticksLeft / (float)TicksPerSecond));
-            GUI.Label(new Rect(pad * 2, pad, panelW, lineH), $"Level {levelNumber}: {level.name}", label);
-            GUI.Label(new Rect(pad * 2, pad + lineH, panelW, lineH),
-                $"Out {released}/{level.cats}   Home {saved} (need {level.need})   Lost {lost}   Time {secs / 60}:{secs % 60:00}", small);
-            GUI.Label(new Rect(pad * 2, pad + lineH * 2f, panelW - pad * 2, lineH * 1.4f), level.hint, small);
+            GUI.Label(new Rect(pad * 2, pad * 1.3f, panelW, lineH), levelNumber > 0 ? $"Level {levelNumber}: {level.name}" : level.name, darkLabel);
+            GUI.Label(new Rect(pad * 2, pad * 1.3f + lineH, panelW, lineH),
+                $"Out {released}/{level.cats}   Home {saved} (need {level.need})   Lost {lost}   Time {secs / 60}:{secs % 60:00}", darkSmall);
+            GUI.Label(new Rect(pad * 2, pad * 1.3f + lineH * 2f, panelW - pad * 3, lineH * 1.5f), level.hint, darkSmall);
 
             // Top-right buttons
             float bw = fs * 7;
@@ -513,9 +733,9 @@ namespace Cattas
             {
                 // Speed slider
                 float sw = fs * 10f, sx = Screen.width - pad - sw;
-                GUI.Box(new Rect(sx - pad * 0.5f, pad * 0.5f, sw + pad, lineH * 1.9f), GUIContent.none);
+                GUI.Box(new Rect(sx - pad * 0.5f, pad * 0.5f, sw + pad, lineH * 1.9f), GUIContent.none, panel);
                 GUI.Label(new Rect(sx, pad * 0.5f, sw, lineH), $"Speed {Mathf.RoundToInt(speedPercent)}%",
-                    new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
+                    new GUIStyle(darkSmall) { alignment = TextAnchor.MiddleCenter });
                 speedPercent = Mathf.Round(GUI.HorizontalSlider(new Rect(sx, pad * 0.5f + lineH, sw, lineH * 0.7f),
                     speedPercent, minSpeedPercent, 100f));
 
@@ -531,7 +751,7 @@ namespace Cattas
             }
 
             if (levelWidth > cam.orthographicSize * cam.aspect * 2f)
-                GUI.Label(new Rect(0, pad, Screen.width, lineH), "Scroll: arrow keys / A D, or right-click drag",
+                ShadowLabel(new Rect(0, pad, Screen.width, lineH), "Scroll: arrow keys / A D, or right-click drag",
                     new GUIStyle(small) { alignment = TextAnchor.UpperCenter });
 
             if (mode != GameMode.Playing) return;
@@ -577,39 +797,41 @@ namespace Cattas
             float total = CatTraits.Count * bw + (CatTraits.Count - 1) * gap;
             float x0 = (Screen.width - total) / 2f;
             float y0 = Screen.height - pad - bh;
-            var style = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(fs * 0.8f), wordWrap = true };
-            var oldBg = GUI.backgroundColor;
-            var oldEnabled = GUI.enabled;
+            var style = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.75f) };
+            var selStyle = new GUIStyle(selectedButton) { fontSize = style.fontSize };
+            var offStyle = new GUIStyle(style);
+            offStyle.normal.background = offStyle.hover.background = offStyle.active.background = texBtnOff;
+            offStyle.normal.textColor = offStyle.hover.textColor = new Color(0.45f, 0.42f, 0.4f);
 
             for (int i = 0; i < CatTraits.Count; i++)
             {
                 var trait = (CatTrait)i;
                 bool usable = CatTraits.IsImplemented(trait) && traitsLeft[i] > 0;
-                GUI.enabled = usable;
-                GUI.backgroundColor = (usable && trait == selectedTrait) ? new Color(1f, 0.8f, 0.3f) : oldBg;
-                if (GUI.Button(new Rect(x0 + i * (bw + gap), y0, bw, bh), $"{CatTraits.DisplayName(trait)}\n{traitsLeft[i]}", style))
+                var st = !usable ? offStyle : trait == selectedTrait ? selStyle : style;
+                if (GUI.Button(new Rect(x0 + i * (bw + gap), y0, bw, bh), $"{CatTraits.DisplayName(trait)}\n{traitsLeft[i]}", st) && usable)
+                {
                     selectedTrait = trait;
+                    Sfx.Play("click", 0.4f, 0f);
+                }
             }
-            GUI.enabled = oldEnabled;
-            GUI.backgroundColor = oldBg;
         }
 
         void DrawResults()
         {
             bool won = saved >= level.need;
             var box = new Rect(Screen.width * 0.2f, Screen.height * 0.28f, Screen.width * 0.6f, Screen.height * 0.44f);
-            GUI.Box(box, GUIContent.none);
-            GUI.Box(box, GUIContent.none);
+            GUI.Box(box, GUIContent.none, panel);
 
             string msg;
             if (won)
                 msg = saved == level.cats ? $"PURR-FECT!\nAll {saved} cats made it home!" : $"Level complete!\n{saved} cats home (needed {level.need})";
             else
                 msg = (timeUp ? "Out of time!\n" : "") + $"Only {saved} cats made it home...\nYou need {level.need}.";
-            GUI.Label(new Rect(box.x, box.y, box.width, box.height * 0.65f), msg, big);
+            var bigDark = new GUIStyle(big); bigDark.normal.textColor = InkCol;
+            GUI.Label(new Rect(box.x, box.y, box.width, box.height * 0.65f), msg, bigDark);
 
             float bw = fs * 8f, bh = fs * 2f, by = box.yMax - bh * 1.5f;
-            bool hasNext = won && levelNumber < levelCount;
+            bool hasNext = won && levelNumber > 0 && levelNumber < levelCount;
             int buttons = hasNext ? 3 : 2;
             float total = buttons * bw + (buttons - 1) * fs;
             float bx = box.center.x - total / 2f;

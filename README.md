@@ -5,6 +5,8 @@ A cat-themed puzzle-platformer: guide a stream of cats safely home by giving the
 Made with **Unity 6** (Universal 2D / URP).
 
 ## Status
+**Kitchen demo ✅** – painted retro-kitchen level, animated kittens, smooth movement, particles, sound effects, styled menus.
+
 **Levels ✅** – level select with saved progress, timer, win/lose screens, scrolling camera, stone blocks, and 10 starter levels that introduce the traits one by one.
 
 **Step 1 – Grey-box prototype ✅**
@@ -34,6 +36,18 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.
    The game builds itself at runtime via `GameBootstrap` — no scene setup needed.
 3. Pick a level from the level select screen. Wide levels scroll with **arrow keys / A D** or **right-click drag**.
+
+## Art pipeline (for artists)
+Painted art lives in `Assets/Resources/Art/`. Save images as **PNG, then rename the file to end in `.bytes`** (e.g. `kitchen_bg.png` → `kitchen_bg.bytes`) so Unity keeps them full-size and uncompressed.
+
+| File | What it is | Size |
+|---|---|---|
+| `<name>_bg` | Background picture behind everything | 2560×1440 (4× the 640×360 level) |
+| `<name>_fg` | The solid ground/furniture. **Transparent = air**; anything opaque is walkable/diggable | 2560×1440, PNG with transparency |
+| `cat_sheet` | Kitten animation: 6 frames side by side, each 48×40 — 4 walk frames, 1 falling, 1 sitting | 288×40 |
+
+Hook them up in a level file with `background: <name>_bg`, `foreground: <name>_fg`, and `markers: off` (hides the plain hatch/exit boxes when the art draws its own). In painted levels the text map only marks `H` (hatch), `E` (exit) and `X` (stone that can't be dug).
+Placeholder art is drawn by `tools/make_kitchen_art.py`; previews are in `tools/*_preview.png`.
 
 ## Making levels
 Levels are plain text files in `Assets/Resources/Levels/` (`level01.txt`, `level02.txt`, ...) — open them in Notepad!
@@ -65,5 +79,8 @@ Handy numbers: cats can step up 6px (less than one block — use ramps!), and fa
 | `Assets/Scripts/DiggableGround.cs` | Pixel-based destructible terrain |
 | `Assets/Scripts/SpriteMaker.cs` | Generates placeholder sprites from code |
 | `Assets/Scripts/Effects.cs` | Simple fade-out effects (ZAP flash, frizzy cat) |
+| `Assets/Scripts/Particle.cs` | Dust, debris and sparkle particles |
+| `Assets/Scripts/Sfx.cs` | Placeholder sound effects generated in code |
+| `Assets/Scripts/Art.cs` | Loads painted art and sprite sheets; rounded UI boxes |
 
 See [`docs/DESIGN.md`](docs/DESIGN.md) for the full game design and roadmap.

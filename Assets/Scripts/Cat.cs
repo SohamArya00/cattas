@@ -57,8 +57,17 @@ namespace Cattas
         DiggableGround ground;
         SpriteRenderer sr;
 
-        public void Init(GameBootstrap game, DiggableGround ground, int startX, int startY, Sprite sprite, Color tint)
+        // Animation: frames 0-3 walk cycle, 4 falling, 5 sitting. (null = single still picture)
+        Sprite[] frames;
+        int animTick;
+        bool puffed;
+
+        // Smooth movement: the rules move the cat once per game step; the picture glides between steps.
+        Vector3 prevPos, curPos;
+
+        public void Init(GameBootstrap game, DiggableGround ground, int startX, int startY, Sprite sprite, Color tint, Sprite[] animFrames = null)
         {
+            frames = animFrames != null && animFrames.Length >= 6 ? animFrames : null;
             this.game = game;
             this.ground = ground;
             x = startX;
@@ -72,6 +81,14 @@ namespace Cattas
             sr.material = GameBootstrap.SpriteMaterial;
             sr.sortingOrder = 5;
             UpdateVisual();
+            prevPos = curPos;
+            transform.localPosition = curPos;
+        }
+
+        void LateUpdate()
+        {
+            if (State == CatState.Splatted) return;
+            transform.localPosition = Vector3.Lerp(prevPos, curPos, GameBootstrap.TickAlpha);
         }
 
         public void Tick()
@@ -96,6 +113,7 @@ namespace Cattas
             {
                 if (game.IsAtExit(x, y))
                 {
+                    game.Fx(FxKind.Home, x, y);
                     State = CatState.Saved;
                     game.OnCatSaved(this);
                     Destroy(gameObject);
@@ -196,6 +214,7 @@ namespace Cattas
                 return;
             }
 
+            game.Fx(FxKind.Dig, x, y - 1);
             ground.CarveRect(x - DigHalfWidth, y - 1, x + DigHalfWidth + 1, y);
             y--;
             wiggle = !wiggle; // flip side to side so it looks like scratching
@@ -243,6 +262,7 @@ namespace Cattas
                 State = CatState.Walking; // bonk - stone. Zoomies over.
                 return;
             }
+            game.Fx(FxKind.Smash, x + dir * 3, y + 4);
             ground.CarveRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight);
             x = nextX;
             wiggle = !wiggle;
@@ -310,6 +330,7 @@ namespace Cattas
                 State = CatState.Walking; // stone - can't scratch that
                 return;
             }
+            game.Fx(FxKind.Dig, x + dir * 2, y);
             ground.CarveRect(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + CatHeight);
             x = nextX;
             y--;
@@ -337,8 +358,9 @@ namespace Cattas
         // Cable Chewer: ZAP! Blast a round hole, and the frizzy cat shoots off home to recover.
         void Zap()
         {
+            game.Fx(FxKind.Zap, x, y + 1);
             ground.Carve(x, y + 1, ZapRadius);
-            game.SpawnZap(x, y, sr.sprite, sr.color);
+            game.SpawnZap(x, y, sr.sprite, baseTint);
             State = CatState.Zapped;
             game.OnCatLost(this);
             Destroy(gameObject);
@@ -383,6 +405,7 @@ namespace Cattas
 
             int a = x + dir, b = x + dir * HairballWidth;
             ground.AddRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + HairballHeight, HairballColour);
+            game.Fx(FxKind.Hairball, x + dir * 4, y + 1);
             hairballsLeft--;
             bridgeStepsLeft = HairballStepForward;
         }
@@ -444,6 +467,11 @@ namespace Cattas
 
         void Fall()
         {
+            if (IsFloating && !puffed)
+            {
+                puffed = true;
+                game.Fx(FxKind.Puff, x, y + 5);
+            }
             int speed = IsFloating ? FloatSpeed : FallSpeed;
             for (int i = 0; i < speed; i++)
             {
@@ -458,6 +486,7 @@ namespace Cattas
             if (fallDistance > SafeFallHeight && !hasFluffchute)
             {
                 State = CatState.Splatted;
+                game.Fx(FxKind.Splat, x, y);
                 game.OnCatLost(this);
                 transform.localScale = new Vector3(1.4f, 0.4f, 1f); // squish!
                 sr.color *= 0.6f;
@@ -466,22 +495,29 @@ namespace Cattas
             else
             {
                 State = CatState.Walking;
+                puffed = false;
             }
         }
 
         void UpdateVisual()
         {
+            animTick++;
+            prevPos = curPos;
             if (State == CatState.Climbing)
             {
                 // Turn sideways so the cat's paws are on the wall and its head points up
                 transform.localRotation = Quaternion.Euler(0f, 0f, dir > 0 ? 90f : -90f);
-                transform.localPosition = new Vector3(x + 0.5f + dir * 0.5f, y + CatHeight / 2f, 0f);
+                curPos = new Vector3(x + 0.5f + dir * 0.5f, y + CatHeight / 2f, 0f);
             }
             else
             {
                 transform.localRotation = Quaternion.identity;
-                transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+                curPos = new Vector3(x + 0.5f, y, 0f);
             }
+            // Big jumps (e.g. turning sideways to climb) shouldn't glide
+            if ((curPos - prevPos).sqrMagnitude > 64f) prevPos = curPos;
+
+            if (frames != null) sr.sprite = frames[PickFrame()];
             bool flip = dir < 0;
             if (State == CatState.Digging && wiggle) flip = !flip;
             if (State == CatState.Blocking)
@@ -521,6 +557,21 @@ namespace Cattas
             // Sparks! Flicker yellow while chewing a cable
             if (fuseTicks > 0)
                 sr.color = (fuseTicks / 3) % 2 == 0 ? Color.Lerp(baseTint, Color.yellow, 0.7f) : baseTint;
+        }
+
+        int PickFrame()
+        {
+            switch (State)
+            {
+                case CatState.Falling: return 4;
+                case CatState.Blocking: return 5;
+                case CatState.Digging: return 5;
+                case CatState.Zooming: return (animTick / 2) % 4;
+                case CatState.Climbing: return (animTick / 5) % 4;
+                case CatState.Scratching: return (animTick / 6) % 4;
+                case CatState.Building: return bridgeStepsLeft > 0 ? (animTick / 3) % 4 : 5;
+                default: return (animTick / 4) % 4;
+            }
         }
     }
 }

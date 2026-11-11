@@ -116,6 +116,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - [x] Step 3 – Traits: Biscuit Baker, Fluffchute, Zoomies, Curtain Climber, Cable Chewer, Hairball Bridge, Scratcher – all 8 done!
 - [x] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [x] Step 5 – Scrolling camera, level select menu, save data (zoom still to do)
+- [x] Kitchen demo level (placeholder art, juice, sounds) for pitching to the art & music team
 - [ ] Demo build + Steam "Coming Soon" page (target: Christmas 2026)
 - [ ] Art & audio integration
 - [ ] Levels 11–100, NG+, cosmetics, home hub

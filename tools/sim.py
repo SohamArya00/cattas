@@ -5,7 +5,8 @@ import os, math
 CS = 8
 class Level:
     def __init__(self, n):
-        path = os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Levels", f"level{n:02d}.txt")
+        name = n if isinstance(n, str) else f"level{n:02d}"
+        path = os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Levels", f"{name}.txt")
         txt = open(path).read().split("\n")
         self.meta = {}; rows = []; inmap = False
         for line in txt:
@@ -19,10 +20,24 @@ class Level:
         self.W, self.H = self.C * CS, self.R * CS
         self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)
         self.hatches, self.exits = [], []
+        art = self.meta.get("foreground", "")
+        if art:
+            from PIL import Image
+            img = Image.open(os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Art", art + ".bytes")).convert("RGBA")
+            k = img.width // self.W; a = img.split()[3].load()
+            for y in range(self.H):
+                for x in range(self.W):
+                    if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 1
         for row, r in enumerate(rows):
             y0 = (self.R - 1 - row) * CS
             for col, ch in enumerate(r):
                 x0 = col * CS
+                if art and ch == 'X':
+                    for yy in range(y0, y0 + CS):
+                        for xx in range(x0, x0 + CS):
+                            if self.is_solid(xx, yy) and 0 <= xx < self.W and 0 <= yy < self.H: self.hard[yy * self.W + xx] = 1
+                    continue
+                if art and ch not in 'HE': continue
                 if ch == '#': self.fill(x0, y0, x0 + CS, y0 + CS)
                 elif ch == 'X': self.fill(x0, y0, x0 + CS, y0 + CS, True)
                 elif ch in '/\\':
@@ -214,7 +229,8 @@ def check(n, desc, plan=(), expect_win=True):
     g = Game(n, plan); res, secs = g.run()
     saved = res.get("saved", 0)
     ok = (saved >= g.lv.need) == expect_win
-    print(f"{'OK  ' if ok else 'FAIL'} L{n:02d} {desc:<45} saved {saved}/{g.lv.cats} need {g.lv.need}  {res}  {secs:.0f}s")
+    label = n if isinstance(n, str) else f"L{n:02d}"
+    print(f"{'OK  ' if ok else 'FAIL'} {label:<7} {desc:<45} saved {saved}/{g.lv.cats} need {g.lv.need}  {res}  {secs:.0f}s")
     return ok
 
 W = lambda c: c.state == "walk"
@@ -242,5 +258,11 @@ if __name__ == "__main__":
         (walking_near(130, 170, 232), "BiscuitBaker"),
         (walking_near(428, 436, 232, 1), "Zoomies"),
         (walking_near(476, 484, 232, 1), "Scratcher"),
+        (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
+    allok &= check("kitchen", "no traits used (should FAIL)", expect_win=False)
+    allok &= check("kitchen", "Bridge sink, baker, zoom fridge, free baker", [
+        (walking_near(198, 205, 150, 1), "HairballBridge"),
+        (walking_near(158, 185, 150), "BiscuitBaker"),
+        (walking_near(258, 266, 150, 1), "Zoomies"),
         (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
     print("ALL GOOD" if allok else "SOME CHECKS FAILED")

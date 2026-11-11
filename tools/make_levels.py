@@ -130,4 +130,26 @@ m.put(8, 33, 'H'); m.put(110, 18, 'E')
 write(10, "Graduation Day", "Everything you've learned! Bridge the gap, get past the wall, then get down the cliff.", 15, 10,
       {"LitterLord": 2, "Fluffchute": 4, "BiscuitBaker": 2, "Scratcher": 2, "CurtainClimber": 2,
        "Zoomies": 2, "CableChewer": 2, "HairballBridge": 2}, m, time=420)
+# Kitchen demo - painted level (art from tools/make_kitchen_art.py). Map only marks hatch, exit and stone.
+m = Map(80)
+m.rect(0, 0, 80, 5, 'X')                       # tiled floor: stone
+m.rect(25, 13, 26, 19, 'X'); m.rect(31, 13, 32, 19, 'X'); m.rect(25, 13, 32, 14, 'X')   # steel sink
+m.put(9, 31, 'H'); m.put(72, 18, 'E')
+body = f"""// Cattas - Kitchen demo (painted level)
+// With painted art, the FOREGROUND picture decides what's solid. The map below only marks:
+//   H = hatch, E = exit, X = stone (anything solid in an X block can't be dug)
+name: Kitchen Chaos
+hint: Kittens are climbing in the window! Get them to the cat basket - watch out for the sink and that big fridge...
+cats: 15
+need: 10
+rate: 2
+time: 300
+background: kitchen_bg
+foreground: kitchen_fg
+markers: off
+traits: LitterLord=2, Fluffchute=5, BiscuitBaker=2, Zoomies=2, CurtainClimber=4, CableChewer=2, Scratcher=2, HairballBridge=2
+map:
+{m.text()}
+"""
+open(os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Levels", "kitchen.txt"), "w", newline="\n").write(body)
 print("ok")
