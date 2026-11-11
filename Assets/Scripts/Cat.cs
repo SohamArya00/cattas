@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Splatted, Saved, Lost }
+    public enum CatState { Falling, Walking, Digging, Blocking, Splatted, Saved, Lost }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -24,6 +24,7 @@ namespace Cattas
         int fallDistance;
         int digTimer;
         bool wiggle;
+        int kneadTimer;
 
         GameBootstrap game;
         DiggableGround ground;
@@ -50,6 +51,7 @@ namespace Cattas
             if (State == CatState.Walking) Walk();
             else if (State == CatState.Falling) Fall();
             else if (State == CatState.Digging) Dig();
+            else if (State == CatState.Blocking) Knead();
 
             if (IsActive)
             {
@@ -71,7 +73,8 @@ namespace Cattas
             UpdateVisual();
         }
 
-        bool IsActive => State == CatState.Walking || State == CatState.Falling || State == CatState.Digging;
+        bool IsActive => State == CatState.Walking || State == CatState.Falling
+                      || State == CatState.Digging || State == CatState.Blocking;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
@@ -83,6 +86,11 @@ namespace Cattas
                     if (State != CatState.Walking) return false; // must be standing on ground
                     State = CatState.Digging;
                     digTimer = 0;
+                    return true;
+                case CatTrait.BiscuitBaker:
+                    if (State != CatState.Walking) return false;
+                    State = CatState.Blocking;
+                    kneadTimer = 0;
                     return true;
                 default:
                     return false; // not built yet
@@ -112,9 +120,24 @@ namespace Cattas
             wiggle = !wiggle; // flip side to side so it looks like scratching
         }
 
+        // Biscuit Baker: stay put and knead. If the ground under us vanishes, we fall
+        // (and stop baking).
+        void Knead()
+        {
+            kneadTimer++;
+            if (!ground.IsSolid(x, y - 1))
+            {
+                State = CatState.Falling;
+                fallDistance = 0;
+            }
+        }
+
         void Walk()
         {
             int nextX = x + dir;
+
+            // A Biscuit Baker in front of us? Turn around.
+            if (game.IsBlockedByBaker(this, nextX, y)) { dir = -dir; return; }
 
             if (ground.IsSolid(nextX, y))
             {
@@ -166,7 +189,20 @@ namespace Cattas
         void UpdateVisual()
         {
             transform.localPosition = new Vector3(x + 0.5f, y, 0f);
-            sr.flipX = (dir < 0) ^ (State == CatState.Digging && wiggle);
+            bool flip = dir < 0;
+            if (State == CatState.Digging && wiggle) flip = !flip;
+            if (State == CatState.Blocking)
+            {
+                // Knead knead knead: turn round every so often and squish on each push.
+                if ((kneadTimer / 20) % 2 == 1) flip = !flip;
+                float squish = (kneadTimer / 5) % 2 == 0 ? 1f : 0.85f;
+                transform.localScale = new Vector3(1f, squish, 1f);
+            }
+            else if (State != CatState.Splatted)
+            {
+                transform.localScale = Vector3.one;
+            }
+            sr.flipX = flip;
         }
     }
 }

@@ -13,7 +13,7 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
 |---|---|---|
 | Digger | **Litter Lord** | Digs straight down, very seriously |
 | Floater | **Fluffchute** | Puffs up fur, survives any fall |
-| Blocker | **Loaf** | Sits as a cat loaf; others turn around |
+| Blocker | **Biscuit Baker** | Kneads biscuits on the spot, turning round and round; other cats turn back |
 | Miner | **Scratcher** | Claws diagonally down |
 | Climber | **Clawber** | Climbs vertical walls |
 | Basher | **Headbutter** | Tunnels horizontally through a wall |
@@ -60,7 +60,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
 - [x] Step 2 – Trait bar UI + Litter Lord
-- [ ] Step 3 – Remaining 7 traits
+- [ ] Step 3 – Remaining traits (Biscuit Baker ✅)
 - [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [ ] Step 5 – Scrolling/zoom camera, menus, save data
 - [ ] Demo build + Steam "Coming Soon" page (target: Christmas 2026)

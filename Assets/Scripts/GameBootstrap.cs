@@ -118,11 +118,13 @@ namespace Cattas
             ground.FillHill(330, 190, 30, 12);    // little hill to walk over
             ground.FillRect(450, 190, 470, 300);  // tall wall blocking the way
             ground.FillRect(0, 100, 640, 140);    // lower floor, where the exit is
+            ground.CarveRect(100, 100, 130, 190); // deadly pit through BOTH floors, under the ledge
             ground.FinishPainting();
 
             // How many of each trait the player gets on this level
             for (int i = 0; i < traitsLeft.Length; i++) traitsLeft[i] = 0;
             traitsLeft[(int)CatTrait.LitterLord] = 3;
+            traitsLeft[(int)CatTrait.BiscuitBaker] = 2;
             selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear
@@ -184,7 +186,31 @@ namespace Cattas
         public bool IsAtExit(int x, int y) => exitZone.Contains(new Vector2Int(x, y));
         public void OnCatSaved(Cat cat) { cats.Remove(cat); saved++; }
         public void OnCatLost(Cat cat) { cats.Remove(cat); lost++; }
-        bool IsFinished => released == totalCats && cats.Count == 0;
+        // The level is over once every cat is out and the only ones left are Biscuit Bakers
+        // (they're busy and will never leave).
+        bool IsFinished
+        {
+            get
+            {
+                if (released < totalCats) return false;
+                foreach (var cat in cats)
+                    if (cat.State != CatState.Blocking) return false;
+                return true;
+            }
+        }
+
+        // Is there a Biscuit Baker just in front of this walking cat?
+        public bool IsBlockedByBaker(Cat walker, int nextX, int y)
+        {
+            foreach (var cat in cats)
+            {
+                if (cat == walker || cat.State != CatState.Blocking) continue;
+                if (Mathf.Abs(cat.Y - y) > 8) continue;
+                bool inFront = nextX > walker.X ? cat.X > walker.X : cat.X < walker.X;
+                if (inFront && Mathf.Abs(cat.X - nextX) <= 4) return true;
+            }
+            return false;
+        }
 
         // ---------- Picking cats ----------
         Cat CatUnderMouse(Vector2 guiMousePos)

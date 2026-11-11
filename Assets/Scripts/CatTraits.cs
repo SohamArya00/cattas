@@ -5,7 +5,7 @@ namespace Cattas
     {
         LitterLord,  // digs straight down (like a very important cat in a litterbox)
         Fluffchute,  // floats safely down from any height
-        Loaf,        // sits still and blocks other cats
+        BiscuitBaker,// kneads biscuits on the spot, blocking other cats
         Scratcher,   // claws diagonally down
         Clawber,     // climbs walls
         Headbutter,  // tunnels straight through a wall
@@ -23,7 +23,7 @@ namespace Cattas
             {
                 case CatTrait.LitterLord: return "Litter Lord";
                 case CatTrait.Fluffchute: return "Fluffchute";
-                case CatTrait.Loaf: return "Loaf";
+                case CatTrait.BiscuitBaker: return "Biscuit Baker";
                 case CatTrait.Scratcher: return "Scratcher";
                 case CatTrait.Clawber: return "Clawber";
                 case CatTrait.Headbutter: return "Headbutter";
@@ -36,7 +36,7 @@ namespace Cattas
         // Which traits have been built so far. We switch these on one at a time.
         public static bool IsImplemented(CatTrait t)
         {
-            return t == CatTrait.LitterLord;
+            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker;
         }
     }
 }

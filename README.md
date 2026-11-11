@@ -11,6 +11,8 @@ Cats spawn from a hatch, walk, climb small bumps, turn at walls, fall (and splat
 **Step 2 – Trait bar + Litter Lord ✅**
 A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a trait, then click a cat. The **Litter Lord** digs straight down through the ground. Test level: the exit is on the floor below, so you have to dig to reach it.
 
+**Biscuit Baker ✅** – the cat kneads biscuits on the spot and other cats turn back. Test level now has a deadly pit under the ledge.
+
 ## How to run
 1. Open the project in Unity 6.
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.
