@@ -33,12 +33,10 @@ namespace Cattas
             }
         }
 
-        // Which traits have been built so far. We switch these on one at a time.
+        // Which traits have been built so far. All 8 are done!
         public static bool IsImplemented(CatTrait t)
         {
-            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute
-                || t == CatTrait.Zoomies || t == CatTrait.CurtainClimber
-                || t == CatTrait.CableChewer || t == CatTrait.HairballBridge;
+            return true;
         }
     }
 }

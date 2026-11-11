@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Building, Splatted, Saved, Lost, Zapped }
+    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Building, Scratching, Splatted, Saved, Lost, Zapped }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -23,6 +23,8 @@ namespace Cattas
         public const int HairballWidth = 6, HairballHeight = 2, HairballStepForward = 4;
         public const int FuseSeconds = 5;
         public const int ZapRadius = 11;
+        public const int ScratchTicksPerStep = 4; // Scratcher moves 1 across + 1 down every 4 steps
+        public const int ScratchReach = 4;        // how far in front it claws away
         public const int ZoomTicksPerPixel = 2; // Zoomies move 1 pixel every 2 steps
         public const int ZoomTunnelHeight = 11; // tunnel is tall enough for a cat
         public const int ZoomReach = 5;       // how far in front the zooming cat smashes
@@ -43,6 +45,7 @@ namespace Cattas
         bool hasClimber;    // permanent once given
         int climbTimer;
         int hairballsLeft, hackTimer, bridgeStepsLeft;
+        int scratchTimer;
         int fuseTicks = -1;  // Cable Chewer countdown (-1 = not chewing)
         Color baseTint;      // the cat's normal colour
 
@@ -87,6 +90,7 @@ namespace Cattas
             else if (State == CatState.Zooming) Zoom();
             else if (State == CatState.Climbing) Climb();
             else if (State == CatState.Building) BuildBridge();
+            else if (State == CatState.Scratching) Scratch();
 
             if (IsActive)
             {
@@ -111,7 +115,7 @@ namespace Cattas
         bool IsActive => State == CatState.Walking || State == CatState.Falling
                       || State == CatState.Digging || State == CatState.Blocking
                       || State == CatState.Zooming || State == CatState.Climbing
-                      || State == CatState.Building;
+                      || State == CatState.Building || State == CatState.Scratching;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
@@ -129,6 +133,11 @@ namespace Cattas
                     if (hasFluffchute) return false;
                     if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
                     hasFluffchute = true;
+                    return true;
+                case CatTrait.Scratcher:
+                    if (State != CatState.Walking) return false;
+                    State = CatState.Scratching;
+                    scratchTimer = 0;
                     return true;
                 case CatTrait.CableChewer:
                     // Any busy cat can start chewing - even a Biscuit Baker (that's how you free them!)
@@ -260,6 +269,53 @@ namespace Cattas
                 x = wallX;
                 State = CatState.Walking;
             }
+        }
+
+        // Scratcher: claw a sloping tunnel diagonally down and forwards (one across, one down).
+        void Scratch()
+        {
+            if (++scratchTimer < ScratchTicksPerStep) return;
+            scratchTimer = 0;
+
+            int nextX = x + dir;
+            if (nextX < 0 || nextX >= ground.Width)
+            {
+                dir = -dir;
+                State = CatState.Walking;
+                return;
+            }
+
+            // Broke out into open air? Then we're done.
+            if (!SolidInFrontOrBelow())
+            {
+                State = CatState.Walking;
+                return;
+            }
+
+            // Claw away the ground in front of us and just below our feet line
+            int a = x + dir, b = x + dir * ScratchReach;
+            ground.CarveRect(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + CatHeight);
+            x = nextX;
+            y--;
+            wiggle = !wiggle;
+
+            if (!ground.IsSolid(x, y - 1))
+            {
+                State = CatState.Falling;
+                fallDistance = 0;
+            }
+        }
+
+        bool SolidInFrontOrBelow()
+        {
+            for (int i = 1; i <= ScratchReach + 2; i++)
+            {
+                int cx = x + dir * i;
+                if (cx < 0 || cx >= ground.Width) return false;
+                for (int h = -1; h < CatHeight; h++)
+                    if (ground.IsSolid(cx, y + h)) return true;
+            }
+            return false;
         }
 
         // Cable Chewer: ZAP! Blast a round hole, and the frizzy cat shoots off home to recover.
@@ -428,6 +484,11 @@ namespace Cattas
             {
                 // Hrrk... hrrk... (squish as it coughs one up)
                 transform.localScale = (hackTimer / 2) % 2 == 0 ? new Vector3(1.15f, 0.85f, 1f) : new Vector3(0.95f, 1.05f, 1f);
+            }
+            else if (State == CatState.Scratching)
+            {
+                // Clawing away, hunched over
+                transform.localScale = wiggle ? new Vector3(1.1f, 0.9f, 1f) : Vector3.one;
             }
             else if (IsFloating)
             {

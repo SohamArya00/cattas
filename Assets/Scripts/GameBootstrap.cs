@@ -130,6 +130,7 @@ namespace Cattas
             traitsLeft[(int)CatTrait.CurtainClimber] = 3;
             traitsLeft[(int)CatTrait.CableChewer] = 3;
             traitsLeft[(int)CatTrait.HairballBridge] = 3;
+            traitsLeft[(int)CatTrait.Scratcher] = 3;
             selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear

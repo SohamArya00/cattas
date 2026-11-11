@@ -23,6 +23,10 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 
 **Hairball Bridge ✅** – hacks up 12 hairballs, one a second, each a step up and forward: a staircase bridge across gaps.
 
+**Scratcher ✅** – claws a sloping tunnel diagonally down and forwards until it breaks out into open air.
+
+🎉 **All 8 Cat Traits are in!**
+
 ## How to run
 1. Open the project in Unity 6.
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.
