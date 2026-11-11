@@ -316,7 +316,7 @@ namespace Cattas
             {
                 // Turn sideways so the cat's paws are on the wall and its head points up
                 transform.localRotation = Quaternion.Euler(0f, 0f, dir > 0 ? 90f : -90f);
-                transform.localPosition = new Vector3(x + 0.5f - dir * 0.5f, y + CatHeight / 2f, 0f);
+                transform.localPosition = new Vector3(x + 0.5f + dir * 0.5f, y + CatHeight / 2f, 0f);
             }
             else
             {
