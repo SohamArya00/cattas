@@ -22,13 +22,13 @@ namespace Cattas
         public const int TicksPerHairball = GameBootstrap.TicksPerSecond; // one hairball a second
         public const int HairballWidth = 6, HairballHeight = 2, HairballStepForward = 4;
         public const int FuseSeconds = 5;
-        public const int ZapRadius = 11;
+        public const int ZapRadius = 12;
         public const int ScratchTicksPerStep = 4; // Scratcher moves 1 across + 1 down every 4 steps
         public const int ScratchReach = 4;        // how far in front it claws away
         public const int ZoomTicksPerPixel = 2; // Zoomies move 1 pixel every 2 steps
         public const int ZoomTunnelHeight = 11; // tunnel is tall enough for a cat
         public const int ZoomReach = 5;       // how far in front the zooming cat smashes
-        public const int ZoomLookAhead = 8;   // stops zooming when nothing is this close ahead
+        public const int ZoomLookAhead = 12;  // stops zooming when nothing is this close ahead
 
         public CatState State { get; private set; }
         public int X => x;
@@ -190,6 +190,12 @@ namespace Cattas
                 return;
             }
 
+            if (ground.HasHardIn(x - DigHalfWidth, y - 1, x + DigHalfWidth + 1, y))
+            {
+                State = CatState.Walking; // clunk - stone. Give up digging.
+                return;
+            }
+
             ground.CarveRect(x - DigHalfWidth, y - 1, x + DigHalfWidth + 1, y);
             y--;
             wiggle = !wiggle; // flip side to side so it looks like scratching
@@ -232,6 +238,11 @@ namespace Cattas
 
             // SMASH the bit right in front of us, then move forward.
             int a = x + dir, b = x + dir * ZoomReach;
+            if (ground.HasHardIn(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight))
+            {
+                State = CatState.Walking; // bonk - stone. Zoomies over.
+                return;
+            }
             ground.CarveRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight);
             x = nextX;
             wiggle = !wiggle;
@@ -294,6 +305,11 @@ namespace Cattas
 
             // Claw away the ground in front of us and just below our feet line
             int a = x + dir, b = x + dir * ScratchReach;
+            if (ground.HasHardIn(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + CatHeight))
+            {
+                State = CatState.Walking; // stone - can't scratch that
+                return;
+            }
             ground.CarveRect(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + CatHeight);
             x = nextX;
             y--;
@@ -321,7 +337,7 @@ namespace Cattas
         // Cable Chewer: ZAP! Blast a round hole, and the frizzy cat shoots off home to recover.
         void Zap()
         {
-            ground.Carve(x, y + 4, ZapRadius);
+            ground.Carve(x, y + 1, ZapRadius);
             game.SpawnZap(x, y, sr.sprite, sr.color);
             State = CatState.Zapped;
             game.OnCatLost(this);

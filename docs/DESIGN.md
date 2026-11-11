@@ -29,6 +29,20 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
   - **Golden Trait** on every 10th level in NG+ only: usable once in NG+1, twice in NG+2, etc.
 - **NG+2** unlocks the **Level Builder** (community levels – details TBD; paid UGC is a later, legally-reviewed feature).
 
+## Levels 1–10
+| # | Name | Teaches |
+|---|---|---|
+| 1 | Dig In | Litter Lord |
+| 2 | Soft Landing | Fluffchute |
+| 3 | Knead to Know | Biscuit Baker |
+| 4 | Zoom Zoom | Zoomies |
+| 5 | Up the Curtains | Curtain Climber |
+| 6 | Bzzzt! | Cable Chewer |
+| 7 | Diagonal Thinking | Scratcher |
+| 8 | Hairy Situation | Hairball Bridge (+ baker, + zap the baker free) |
+| 9 | Athletes | Trait combos (climb + float) |
+| 10 | Graduation Day | Everything, wide scrolling level |
+
 ## Objectives & rewards (per level)
 - Complete (save the required number)
 - Save 100% of cats
@@ -61,8 +75,8 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
 - [x] Step 2 – Trait bar UI + Litter Lord
 - [x] Step 3 – Traits: Biscuit Baker, Fluffchute, Zoomies, Curtain Climber, Cable Chewer, Hairball Bridge, Scratcher – all 8 done!
-- [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
-- [ ] Step 5 – Scrolling/zoom camera, menus, save data
+- [x] Step 4 – Level data format + first 10 levels, timer, win/lose screens
+- [x] Step 5 – Scrolling camera, level select menu, save data (zoom still to do)
 - [ ] Demo build + Steam "Coming Soon" page (target: Christmas 2026)
 - [ ] Art & audio integration
 - [ ] Levels 11–100, NG+, cosmetics, home hub

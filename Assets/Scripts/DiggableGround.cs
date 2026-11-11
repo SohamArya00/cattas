@@ -9,6 +9,7 @@ namespace Cattas
         public int Height { get; private set; }
 
         bool[] solid;
+        bool[] hard;   // stone: can't be dug, zoomed or zapped
         Color32[] pixels;
         Texture2D texture;
         bool needsRedraw;
@@ -18,6 +19,7 @@ namespace Cattas
             Width = width;
             Height = height;
             solid = new bool[width * height];
+            hard = new bool[width * height];
             pixels = new Color32[width * height];
 
             texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
@@ -37,6 +39,33 @@ namespace Cattas
             if (x < 0 || x >= Width) return true;
             if (y < 0 || y >= Height) return false;
             return solid[y * Width + x];
+        }
+
+        public bool IsHard(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return false;
+            return hard[y * Width + x];
+        }
+
+        // Fill a rectangle with stone that can't be dug.
+        public void FillHardRect(int x0, int y0, int x1, int y1)
+        {
+            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                {
+                    solid[y * Width + x] = true;
+                    hard[y * Width + x] = true;
+                }
+        }
+
+        // A ramp filling one 8x8 block. risingRight = "/" shape, otherwise "\" shape.
+        public void FillRamp(int x0, int y0, int size, bool risingRight)
+        {
+            for (int i = 0; i < size; i++)
+            {
+                int h = risingRight ? i + 1 : size - i;
+                FillRect(x0 + i, y0, x0 + i + 1, y0 + h);
+            }
         }
 
         // Fill a rectangle with ground (x1/y1 not included).
@@ -67,6 +96,12 @@ namespace Cattas
                     int i = y * Width + x;
                     if (!solid[i]) { pixels[i] = new Color32(0, 0, 0, 0); continue; }
                     int n = Noise(x, y);
+                    if (hard[i])
+                    {
+                        byte g = (byte)(120 + n);
+                        pixels[i] = new Color32(g, g, (byte)(g + 8), 255);
+                        continue;
+                    }
                     bool nearTop = !IsSolid(x, y + 1) || !IsSolid(x, y + 2) || !IsSolid(x, y + 3);
                     pixels[i] = nearTop
                         ? new Color32((byte)(60 + n), (byte)(150 + n), (byte)(50 + n / 2), 255)
@@ -87,7 +122,7 @@ namespace Cattas
                     int x = cx + dx, y = cy + dy;
                     if (x < 0 || x >= Width || y < 0 || y >= Height) continue;
                     int i = y * Width + x;
-                    if (!solid[i]) continue;
+                    if (!solid[i] || hard[i]) continue;
                     solid[i] = false;
                     pixels[i] = new Color32(0, 0, 0, 0);
                     needsRedraw = true;
@@ -103,6 +138,7 @@ namespace Cattas
                 for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
                 {
                     int i = y * Width + x;
+                    if (hard[i]) continue;
                     int n = Noise(x, y) / 2;
                     solid[i] = true;
                     pixels[i] = new Color32((byte)Mathf.Min(255, colour.r + n), (byte)Mathf.Min(255, colour.g + n),
@@ -120,13 +156,24 @@ namespace Cattas
                 for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
                 {
                     int i = y * Width + x;
-                    if (!solid[i]) continue;
+                    if (!solid[i] || hard[i]) continue;
                     solid[i] = false;
                     pixels[i] = new Color32(0, 0, 0, 0);
                     needsRedraw = true;
                 }
             }
         }
+
+        bool AnyHard(int x0, int y0, int x1, int y1)
+        {
+            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                    if (hard[y * Width + x]) return true;
+            return false;
+        }
+
+        // Is there any stone in this rectangle? (x1/y1 not included)
+        public bool HasHardIn(int x0, int y0, int x1, int y1) => AnyHard(x0, y0, x1, y1);
 
         void LateUpdate()
         {
