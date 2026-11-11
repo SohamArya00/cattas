@@ -37,7 +37,7 @@ namespace Cattas
         public static bool IsImplemented(CatTrait t)
         {
             return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute
-                || t == CatTrait.Zoomies;
+                || t == CatTrait.Zoomies || t == CatTrait.CurtainClimber;
         }
     }
 }

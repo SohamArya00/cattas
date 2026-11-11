@@ -60,7 +60,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
 - [x] Step 2 – Trait bar UI + Litter Lord
-- [ ] Step 3 – Remaining traits (Biscuit Baker ✅, Fluffchute ✅, Zoomies ✅)
+- [ ] Step 3 – Remaining traits (Biscuit Baker ✅, Fluffchute ✅, Zoomies ✅, Curtain Climber ✅)
 - [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [ ] Step 5 – Scrolling/zoom camera, menus, save data
 - [ ] Demo build + Steam "Coming Soon" page (target: Christmas 2026)

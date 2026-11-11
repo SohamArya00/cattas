@@ -127,6 +127,7 @@ namespace Cattas
             traitsLeft[(int)CatTrait.BiscuitBaker] = 2;
             traitsLeft[(int)CatTrait.Fluffchute] = 5;
             traitsLeft[(int)CatTrait.Zoomies] = 2;
+            traitsLeft[(int)CatTrait.CurtainClimber] = 3;
             selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear

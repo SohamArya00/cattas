@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Splatted, Saved, Lost }
+    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Splatted, Saved, Lost }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -16,6 +16,8 @@ namespace Cattas
         public const int FluffOpenHeight = 12; // Fluffchute puffs up after falling this far
         public const int DigTicksPerRow = 4;  // Litter Lord digs one pixel row every 4 steps
         public const int DigHalfWidth = 4;    // Litter Lord hole is 9 pixels wide
+        public const int ClimbTicksPerPixel = 2; // Curtain Climber goes up 1 pixel every 2 steps
+        public const int CatHeight = 10;
         public const int ZoomTicksPerPixel = 2; // Zoomies move 1 pixel every 2 steps
         public const int ZoomTunnelHeight = 11; // tunnel is tall enough for a cat
         public const int ZoomReach = 5;       // how far in front the zooming cat smashes
@@ -33,6 +35,8 @@ namespace Cattas
         int kneadTimer;
         bool hasFluffchute; // permanent once given
         int zoomTimer;
+        bool hasClimber;    // permanent once given
+        int climbTimer;
 
         GameBootstrap game;
         DiggableGround ground;
@@ -61,6 +65,7 @@ namespace Cattas
             else if (State == CatState.Digging) Dig();
             else if (State == CatState.Blocking) Knead();
             else if (State == CatState.Zooming) Zoom();
+            else if (State == CatState.Climbing) Climb();
 
             if (IsActive)
             {
@@ -84,7 +89,7 @@ namespace Cattas
 
         bool IsActive => State == CatState.Walking || State == CatState.Falling
                       || State == CatState.Digging || State == CatState.Blocking
-                      || State == CatState.Zooming;
+                      || State == CatState.Zooming || State == CatState.Climbing;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
@@ -102,6 +107,12 @@ namespace Cattas
                     if (hasFluffchute) return false;
                     if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
                     hasFluffchute = true;
+                    return true;
+                case CatTrait.CurtainClimber:
+                    // Permanent, like Fluffchute. Kicks in next time the cat walks into a wall.
+                    if (hasClimber) return false;
+                    if (State == CatState.Blocking) return false;
+                    hasClimber = true;
                     return true;
                 case CatTrait.Zoomies:
                     if (State != CatState.Walking) return false;
@@ -191,6 +202,32 @@ namespace Cattas
             fallDistance = 0;
         }
 
+        // Curtain Climber: go straight up the wall. At the top, hop over onto it.
+        // If something bonks our head on the way up, let go and fall back.
+        void Climb()
+        {
+            if (++climbTimer < ClimbTicksPerPixel) return;
+            climbTimer = 0;
+
+            int wallX = x + dir;
+            if (ground.IsSolid(x, y + CatHeight) || y + CatHeight >= ground.Height)
+            {
+                // Bonk! Ceiling. Let go and fall.
+                dir = -dir;
+                State = CatState.Falling;
+                fallDistance = 0;
+                return;
+            }
+
+            y++;
+            if (!ground.IsSolid(wallX, y))
+            {
+                // Made it to the top - step over onto it.
+                x = wallX;
+                State = CatState.Walking;
+            }
+        }
+
         bool SolidAhead(int distance)
         {
             for (int i = 1; i <= distance; i++)
@@ -215,7 +252,20 @@ namespace Cattas
                 // Something in the way - is it a small step we can climb?
                 int h = 1;
                 while (h <= MaxStepUp && ground.IsSolid(nextX, y + h)) h++;
-                if (h > MaxStepUp) { dir = -dir; return; } // it's a wall: turn around
+                if (h > MaxStepUp)
+                {
+                    // It's a wall! Climbers climb it (but not the edge of the level); everyone else turns round.
+                    if (hasClimber && nextX >= 0 && nextX < ground.Width)
+                    {
+                        State = CatState.Climbing;
+                        climbTimer = 0;
+                    }
+                    else
+                    {
+                        dir = -dir;
+                    }
+                    return;
+                }
                 x = nextX;
                 y += h;
                 return;
@@ -262,7 +312,17 @@ namespace Cattas
 
         void UpdateVisual()
         {
-            transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+            if (State == CatState.Climbing)
+            {
+                // Turn sideways so the cat's paws are on the wall and its head points up
+                transform.localRotation = Quaternion.Euler(0f, 0f, dir > 0 ? 90f : -90f);
+                transform.localPosition = new Vector3(x + 0.5f - dir * 0.5f, y + CatHeight / 2f, 0f);
+            }
+            else
+            {
+                transform.localRotation = Quaternion.identity;
+                transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+            }
             bool flip = dir < 0;
             if (State == CatState.Digging && wiggle) flip = !flip;
             if (State == CatState.Blocking)
@@ -284,8 +344,8 @@ namespace Cattas
             }
             else if (State != CatState.Splatted)
             {
-                // Cats with a Fluffchute ready are permanently a bit fluffier, so you can spot them
-                transform.localScale = hasFluffchute ? new Vector3(1.15f, 1.15f, 1f) : Vector3.one;
+                // Cats with a Fluffchute or Curtain Climber are permanently a bit fluffier, so you can spot them
+                transform.localScale = (hasFluffchute || hasClimber) ? new Vector3(1.15f, 1.15f, 1f) : Vector3.one;
             }
             sr.flipX = flip;
         }

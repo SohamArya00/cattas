@@ -17,6 +17,8 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 
 **Zoomies ✅** – the cat charges forward smashing a tunnel through walls, and calms down when there's nothing left in front. Test level now has two routes: dig down, or zoom through the wall to a gap on the right.
 
+**Curtain Climber ✅** – permanent; next time the cat meets a wall it climbs straight up and over. Bonks its head on ceilings and falls back. Combine with Fluffchute to survive the drop on the other side.
+
 ## How to run
 1. Open the project in Unity 6.
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.
