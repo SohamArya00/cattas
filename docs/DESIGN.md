@@ -17,8 +17,8 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
 | Miner | **Scratcher** | Claws diagonally down |
 | Climber | **Curtain Climber** | Climbs vertical walls |
 | Basher | **Zoomies** | Zooms straight through walls, smashing a tunnel |
-| Bomber | **Hissy Fit** | 5s countdown, then POOF – blasts terrain; cat zips home dizzy (not counted as saved) |
-| Builder | **Yarn Bridge** | Knits a short diagonal bridge |
+| Bomber | **Cable Chewer** | Chews a cable for 5s, then ZAP! – blasts a hole; the frizzy cat shoots off home to recover (not counted as saved). Also frees Biscuit Bakers |
+| Builder | **Hairball Bridge** | Hacks up 12 hairballs over 12 seconds, building a 12-step staircase bridge |
 
 ## Progression
 - **100 levels.** Levels 1–10 are gentle and unlock one trait at a time.
@@ -60,7 +60,7 @@ A cosy house where trophies, unlocked skins and collectibles are displayed.
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
 - [x] Step 2 – Trait bar UI + Litter Lord
-- [ ] Step 3 – Remaining traits (Biscuit Baker ✅, Fluffchute ✅, Zoomies ✅, Curtain Climber ✅)
+- [x] Step 3 – Traits: Biscuit Baker, Fluffchute, Zoomies, Curtain Climber, Cable Chewer, Hairball Bridge (Scratcher still to do)
 - [ ] Step 4 – Level data format + first 10 levels, timer, win/lose screens
 - [ ] Step 5 – Scrolling/zoom camera, menus, save data
 - [ ] Demo build + Steam "Coming Soon" page (target: Christmas 2026)

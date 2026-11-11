@@ -95,6 +95,23 @@ namespace Cattas
             }
         }
 
+        // Add new solid ground in a rectangle, in the given colour (used for hairballs).
+        public void AddRect(int x0, int y0, int x1, int y1, Color32 colour)
+        {
+            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+            {
+                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                {
+                    int i = y * Width + x;
+                    int n = Noise(x, y) / 2;
+                    solid[i] = true;
+                    pixels[i] = new Color32((byte)Mathf.Min(255, colour.r + n), (byte)Mathf.Min(255, colour.g + n),
+                                            (byte)Mathf.Min(255, colour.b + n), 255);
+                    needsRedraw = true;
+                }
+            }
+        }
+
         // Remove ground in a rectangle (x1/y1 not included).
         public void CarveRect(int x0, int y0, int x1, int y1)
         {

@@ -22,6 +22,19 @@ namespace Cattas
             return Build(w, h, pixels, pivot);
         }
 
+        public static Sprite Circle(int radius, Color32 colour)
+        {
+            int size = radius * 2 + 1;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    int dx = x - radius, dy = y - radius;
+                    pixels[y * size + x] = dx * dx + dy * dy <= radius * radius ? colour : new Color32(0, 0, 0, 0);
+                }
+            return Build(size, size, pixels, new Vector2(0.5f, 0.5f));
+        }
+
         static Sprite Build(int w, int h, Color32[] pixels, Vector2 pivot)
         {
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)

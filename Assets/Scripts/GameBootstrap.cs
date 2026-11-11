@@ -14,7 +14,7 @@ namespace Cattas
         public int catsNeeded = 7;           // how many must reach the exit to win
         public float secondsBetweenCats = 1.5f;
 
-        const int TicksPerSecond = 30;       // game logic runs at a steady 30 steps a second
+        public const int TicksPerSecond = 30;       // game logic runs at a steady 30 steps a second
 
         Camera cam;
         Transform levelRoot;
@@ -128,6 +128,8 @@ namespace Cattas
             traitsLeft[(int)CatTrait.Fluffchute] = 5;
             traitsLeft[(int)CatTrait.Zoomies] = 2;
             traitsLeft[(int)CatTrait.CurtainClimber] = 3;
+            traitsLeft[(int)CatTrait.CableChewer] = 3;
+            traitsLeft[(int)CatTrait.HairballBridge] = 3;
             selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear
@@ -200,6 +202,34 @@ namespace Cattas
                     if (cat.State != CatState.Blocking) return false;
                 return true;
             }
+        }
+
+        // ZAP! A bright flash, and a frizzy cat that shoots off home to recover.
+        public void SpawnZap(int x, int y, Sprite catSprite, Color tint)
+        {
+            var flash = new GameObject("Zap Flash");
+            flash.transform.SetParent(levelRoot, false);
+            flash.transform.localPosition = new Vector3(x + 0.5f, y + 5f, 0f);
+            var fsr = flash.AddComponent<SpriteRenderer>();
+            fsr.sprite = SpriteMaker.Circle(14, new Color32(255, 240, 120, 255));
+            fsr.material = SpriteMaterial;
+            fsr.sortingOrder = 10;
+            var ffade = flash.AddComponent<FadeAway>();
+            ffade.life = 0.3f;
+            ffade.grow = 0.6f;
+
+            var frizz = new GameObject("Frizzy Cat");
+            frizz.transform.SetParent(levelRoot, false);
+            frizz.transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+            frizz.transform.localScale = new Vector3(1.5f, 1.5f, 1f);
+            var csr = frizz.AddComponent<SpriteRenderer>();
+            csr.sprite = catSprite;
+            csr.color = tint * 0.45f + new Color(0f, 0f, 0f, 0.55f);
+            csr.material = SpriteMaterial;
+            csr.sortingOrder = 11;
+            var cfade = frizz.AddComponent<FadeAway>();
+            cfade.life = 1.2f;
+            cfade.rise = 60f;
         }
 
         // Is there a Biscuit Baker just in front of this walking cat?
@@ -319,6 +349,17 @@ namespace Cattas
             }
 
             DrawTraitBar(fs, pad);
+
+            // Cable Chewer countdowns above cats' heads
+            var fuseStyle = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 1.1f) };
+            fuseStyle.normal.textColor = new Color(1f, 0.9f, 0.2f);
+            foreach (var cat in cats)
+            {
+                int secs = cat.FuseSecondsLeft;
+                if (secs <= 0) continue;
+                Vector3 p = cam.WorldToScreenPoint(new Vector3(cat.X + 0.5f, cat.Y + 18f, 0f));
+                GUI.Label(new Rect(p.x - fs, Screen.height - p.y - fs, fs * 2, fs * 2), secs.ToString(), fuseStyle);
+            }
 
             // Highlight the cat under the mouse, and give it the trait on click.
             Event e = Event.current;

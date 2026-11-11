@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Splatted, Saved, Lost }
+    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Building, Splatted, Saved, Lost, Zapped }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -18,6 +18,11 @@ namespace Cattas
         public const int DigHalfWidth = 4;    // Litter Lord hole is 9 pixels wide
         public const int ClimbTicksPerPixel = 2; // Curtain Climber goes up 1 pixel every 2 steps
         public const int CatHeight = 10;
+        public const int HairballsPerBridge = 12;
+        public const int TicksPerHairball = GameBootstrap.TicksPerSecond; // one hairball a second
+        public const int HairballWidth = 6, HairballHeight = 2, HairballStepForward = 4;
+        public const int FuseSeconds = 5;
+        public const int ZapRadius = 11;
         public const int ZoomTicksPerPixel = 2; // Zoomies move 1 pixel every 2 steps
         public const int ZoomTunnelHeight = 11; // tunnel is tall enough for a cat
         public const int ZoomReach = 5;       // how far in front the zooming cat smashes
@@ -37,6 +42,13 @@ namespace Cattas
         int zoomTimer;
         bool hasClimber;    // permanent once given
         int climbTimer;
+        int hairballsLeft, hackTimer, bridgeStepsLeft;
+        int fuseTicks = -1;  // Cable Chewer countdown (-1 = not chewing)
+        Color baseTint;      // the cat's normal colour
+
+        public int FuseSecondsLeft => fuseTicks < 0 ? 0 : Mathf.CeilToInt(fuseTicks / (float)GameBootstrap.TicksPerSecond);
+
+        static readonly Color32 HairballColour = new Color32(140, 120, 100, 255);
 
         GameBootstrap game;
         DiggableGround ground;
@@ -53,6 +65,7 @@ namespace Cattas
             sr = gameObject.AddComponent<SpriteRenderer>();
             sr.sprite = sprite;
             sr.color = tint;
+            baseTint = tint;
             sr.material = GameBootstrap.SpriteMaterial;
             sr.sortingOrder = 5;
             UpdateVisual();
@@ -60,12 +73,20 @@ namespace Cattas
 
         public void Tick()
         {
+            // Cable Chewer countdown runs whatever else the cat is doing
+            if (IsActive && fuseTicks > 0 && --fuseTicks == 0)
+            {
+                Zap();
+                return;
+            }
+
             if (State == CatState.Walking) Walk();
             else if (State == CatState.Falling) Fall();
             else if (State == CatState.Digging) Dig();
             else if (State == CatState.Blocking) Knead();
             else if (State == CatState.Zooming) Zoom();
             else if (State == CatState.Climbing) Climb();
+            else if (State == CatState.Building) BuildBridge();
 
             if (IsActive)
             {
@@ -89,7 +110,8 @@ namespace Cattas
 
         bool IsActive => State == CatState.Walking || State == CatState.Falling
                       || State == CatState.Digging || State == CatState.Blocking
-                      || State == CatState.Zooming || State == CatState.Climbing;
+                      || State == CatState.Zooming || State == CatState.Climbing
+                      || State == CatState.Building;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
@@ -107,6 +129,18 @@ namespace Cattas
                     if (hasFluffchute) return false;
                     if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
                     hasFluffchute = true;
+                    return true;
+                case CatTrait.CableChewer:
+                    // Any busy cat can start chewing - even a Biscuit Baker (that's how you free them!)
+                    if (fuseTicks >= 0) return false;
+                    fuseTicks = FuseSeconds * GameBootstrap.TicksPerSecond;
+                    return true;
+                case CatTrait.HairballBridge:
+                    if (State != CatState.Walking) return false;
+                    State = CatState.Building;
+                    hairballsLeft = HairballsPerBridge;
+                    hackTimer = 0;
+                    bridgeStepsLeft = 0;
                     return true;
                 case CatTrait.CurtainClimber:
                     // Permanent, like Fluffchute. Kicks in next time the cat walks into a wall.
@@ -228,6 +262,59 @@ namespace Cattas
             }
         }
 
+        // Cable Chewer: ZAP! Blast a round hole, and the frizzy cat shoots off home to recover.
+        void Zap()
+        {
+            ground.Carve(x, y + 4, ZapRadius);
+            game.SpawnZap(x, y, sr.sprite, sr.color);
+            State = CatState.Zapped;
+            game.OnCatLost(this);
+            Destroy(gameObject);
+        }
+
+        // Hairball Bridge: hack up a hairball (one a second), step up onto it, repeat 12 times.
+        void BuildBridge()
+        {
+            if (!ground.IsSolid(x, y - 1))
+            {
+                State = CatState.Falling;
+                fallDistance = 0;
+                return;
+            }
+
+            // Walking up onto the hairball we just made, one pixel per step
+            if (bridgeStepsLeft > 0)
+            {
+                int nextX = x + dir;
+                if (nextX < 0 || nextX >= ground.Width || ground.IsSolid(nextX, y + CatHeight) || ground.IsSolid(nextX, y + HairballHeight + 1))
+                {
+                    // Bumped into something - stop building and turn round
+                    dir = -dir;
+                    State = CatState.Walking;
+                    return;
+                }
+                if (ground.IsSolid(nextX, y))
+                {
+                    int h = 1;
+                    while (h <= HairballHeight && ground.IsSolid(nextX, y + h)) h++;
+                    y += h;
+                }
+                x = nextX;
+                bridgeStepsLeft--;
+                if (bridgeStepsLeft == 0 && hairballsLeft == 0) State = CatState.Walking;
+                return;
+            }
+
+            // Hrrk... hrrk... HACK!
+            if (++hackTimer < TicksPerHairball) return;
+            hackTimer = 0;
+
+            int a = x + dir, b = x + dir * HairballWidth;
+            ground.AddRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + HairballHeight, HairballColour);
+            hairballsLeft--;
+            bridgeStepsLeft = HairballStepForward;
+        }
+
         bool SolidAhead(int distance)
         {
             for (int i = 1; i <= distance; i++)
@@ -337,6 +424,11 @@ namespace Cattas
                 // Stretched out at full speed
                 transform.localScale = wiggle ? new Vector3(1.25f, 0.9f, 1f) : new Vector3(1.1f, 0.95f, 1f);
             }
+            else if (State == CatState.Building && bridgeStepsLeft == 0 && hackTimer > TicksPerHairball - 8)
+            {
+                // Hrrk... hrrk... (squish as it coughs one up)
+                transform.localScale = (hackTimer / 2) % 2 == 0 ? new Vector3(1.15f, 0.85f, 1f) : new Vector3(0.95f, 1.05f, 1f);
+            }
             else if (IsFloating)
             {
                 // All fluffed up like a dandelion, drifting down
@@ -348,6 +440,10 @@ namespace Cattas
                 transform.localScale = (hasFluffchute || hasClimber) ? new Vector3(1.15f, 1.15f, 1f) : Vector3.one;
             }
             sr.flipX = flip;
+
+            // Sparks! Flicker yellow while chewing a cable
+            if (fuseTicks > 0)
+                sr.color = (fuseTicks / 3) % 2 == 0 ? Color.Lerp(baseTint, Color.yellow, 0.7f) : baseTint;
         }
     }
 }

@@ -9,8 +9,8 @@ namespace Cattas
         Scratcher,   // claws diagonally down
         CurtainClimber, // climbs walls
         Zoomies,     // zooms straight through walls
-        HissyFit,    // 5 second countdown, then POOF
-        YarnBridge,  // knits a little bridge
+        CableChewer, // chews a cable for 5 seconds, then ZAP! blasts a hole
+        HairballBridge, // hacks up 12 hairballs, building a staircase bridge
     }
 
     public static class CatTraits
@@ -27,8 +27,8 @@ namespace Cattas
                 case CatTrait.Scratcher: return "Scratcher";
                 case CatTrait.CurtainClimber: return "Curtain Climber";
                 case CatTrait.Zoomies: return "Zoomies";
-                case CatTrait.HissyFit: return "Hissy Fit";
-                case CatTrait.YarnBridge: return "Yarn Bridge";
+                case CatTrait.CableChewer: return "Cable Chewer";
+                case CatTrait.HairballBridge: return "Hairball Bridge";
                 default: return t.ToString();
             }
         }
@@ -37,7 +37,8 @@ namespace Cattas
         public static bool IsImplemented(CatTrait t)
         {
             return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute
-                || t == CatTrait.Zoomies || t == CatTrait.CurtainClimber;
+                || t == CatTrait.Zoomies || t == CatTrait.CurtainClimber
+                || t == CatTrait.CableChewer || t == CatTrait.HairballBridge;
         }
     }
 }

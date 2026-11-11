@@ -19,6 +19,10 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 
 **Curtain Climber ✅** – permanent; next time the cat meets a wall it climbs straight up and over. Bonks its head on ceilings and falls back. Combine with Fluffchute to survive the drop on the other side.
 
+**Cable Chewer ✅** – 5-second countdown (number above the cat, sparks), then ZAP: blasts a round hole and the frizzy cat shoots off home. Works on Biscuit Bakers too.
+
+**Hairball Bridge ✅** – hacks up 12 hairballs, one a second, each a step up and forward: a staircase bridge across gaps.
+
 ## How to run
 1. Open the project in Unity 6.
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.
@@ -32,5 +36,6 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 | `Assets/Scripts/CatTraits.cs` | The list of Cat Traits and which ones are built |
 | `Assets/Scripts/DiggableGround.cs` | Pixel-based destructible terrain |
 | `Assets/Scripts/SpriteMaker.cs` | Generates placeholder sprites from code |
+| `Assets/Scripts/Effects.cs` | Simple fade-out effects (ZAP flash, frizzy cat) |
 
 See [`docs/DESIGN.md`](docs/DESIGN.md) for the full game design and roadmap.
