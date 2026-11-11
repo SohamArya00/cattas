@@ -113,10 +113,10 @@ namespace Cattas
             ground = groundObj.AddComponent<DiggableGround>();
             ground.Init(LevelWidth, LevelHeight);
 
-            ground.FillRect(0, 160, 640, 190);    // main floor (top surface at y=190)
+            ground.FillRect(0, 160, 600, 190);    // main floor (top surface at y=190), with a gap at the far right
             ground.FillRect(30, 225, 260, 245);   // upper ledge the cats start on
             ground.FillHill(330, 190, 30, 12);    // little hill to walk over
-            ground.FillRect(450, 190, 470, 300);  // tall wall blocking the way
+            ground.FillRect(450, 190, 470, 300);  // tall wall blocking the way (Zoomies can smash it!)
             ground.FillRect(0, 100, 640, 140);    // lower floor, where the exit is
             ground.CarveRect(100, 100, 130, 190); // deadly pit through BOTH floors, under the ledge
             ground.FinishPainting();
@@ -126,6 +126,7 @@ namespace Cattas
             traitsLeft[(int)CatTrait.LitterLord] = 3;
             traitsLeft[(int)CatTrait.BiscuitBaker] = 2;
             traitsLeft[(int)CatTrait.Fluffchute] = 5;
+            traitsLeft[(int)CatTrait.Zoomies] = 2;
             selectedTrait = CatTrait.LitterLord;
 
             // Hatch where cats appear

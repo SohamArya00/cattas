@@ -7,8 +7,8 @@ namespace Cattas
         Fluffchute,  // floats safely down from any height
         BiscuitBaker,// kneads biscuits on the spot, blocking other cats
         Scratcher,   // claws diagonally down
-        Clawber,     // climbs walls
-        Headbutter,  // tunnels straight through a wall
+        CurtainClimber, // climbs walls
+        Zoomies,     // zooms straight through walls
         HissyFit,    // 5 second countdown, then POOF
         YarnBridge,  // knits a little bridge
     }
@@ -25,8 +25,8 @@ namespace Cattas
                 case CatTrait.Fluffchute: return "Fluffchute";
                 case CatTrait.BiscuitBaker: return "Biscuit Baker";
                 case CatTrait.Scratcher: return "Scratcher";
-                case CatTrait.Clawber: return "Clawber";
-                case CatTrait.Headbutter: return "Headbutter";
+                case CatTrait.CurtainClimber: return "Curtain Climber";
+                case CatTrait.Zoomies: return "Zoomies";
                 case CatTrait.HissyFit: return "Hissy Fit";
                 case CatTrait.YarnBridge: return "Yarn Bridge";
                 default: return t.ToString();
@@ -36,7 +36,8 @@ namespace Cattas
         // Which traits have been built so far. We switch these on one at a time.
         public static bool IsImplemented(CatTrait t)
         {
-            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute;
+            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute
+                || t == CatTrait.Zoomies;
         }
     }
 }

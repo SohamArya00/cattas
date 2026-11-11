@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Blocking, Splatted, Saved, Lost }
+    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Splatted, Saved, Lost }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
@@ -16,6 +16,10 @@ namespace Cattas
         public const int FluffOpenHeight = 12; // Fluffchute puffs up after falling this far
         public const int DigTicksPerRow = 4;  // Litter Lord digs one pixel row every 4 steps
         public const int DigHalfWidth = 4;    // Litter Lord hole is 9 pixels wide
+        public const int ZoomTicksPerPixel = 2; // Zoomies move 1 pixel every 2 steps
+        public const int ZoomTunnelHeight = 11; // tunnel is tall enough for a cat
+        public const int ZoomReach = 5;       // how far in front the zooming cat smashes
+        public const int ZoomLookAhead = 8;   // stops zooming when nothing is this close ahead
 
         public CatState State { get; private set; }
         public int X => x;
@@ -28,6 +32,7 @@ namespace Cattas
         bool wiggle;
         int kneadTimer;
         bool hasFluffchute; // permanent once given
+        int zoomTimer;
 
         GameBootstrap game;
         DiggableGround ground;
@@ -55,6 +60,7 @@ namespace Cattas
             else if (State == CatState.Falling) Fall();
             else if (State == CatState.Digging) Dig();
             else if (State == CatState.Blocking) Knead();
+            else if (State == CatState.Zooming) Zoom();
 
             if (IsActive)
             {
@@ -77,7 +83,8 @@ namespace Cattas
         }
 
         bool IsActive => State == CatState.Walking || State == CatState.Falling
-                      || State == CatState.Digging || State == CatState.Blocking;
+                      || State == CatState.Digging || State == CatState.Blocking
+                      || State == CatState.Zooming;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
@@ -95,6 +102,11 @@ namespace Cattas
                     if (hasFluffchute) return false;
                     if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
                     hasFluffchute = true;
+                    return true;
+                case CatTrait.Zoomies:
+                    if (State != CatState.Walking) return false;
+                    State = CatState.Zooming;
+                    zoomTimer = 0;
                     return true;
                 case CatTrait.BiscuitBaker:
                     if (State != CatState.Walking) return false;
@@ -139,6 +151,56 @@ namespace Cattas
                 State = CatState.Falling;
                 fallDistance = 0;
             }
+        }
+
+        // Zoomies: charge forward, smashing a cat-sized tunnel through anything in the way.
+        // Stops (and goes back to walking) when there's nothing left to smash.
+        void Zoom()
+        {
+            if (++zoomTimer < ZoomTicksPerPixel) return;
+            zoomTimer = 0;
+
+            // Reached the edge of the level, or a Biscuit Baker? Calm down and turn round.
+            int nextX = x + dir;
+            if (nextX < 0 || nextX >= ground.Width || game.IsBlockedByBaker(this, nextX, y))
+            {
+                dir = -dir;
+                State = CatState.Walking;
+                return;
+            }
+
+            // Anything ahead worth smashing?
+            if (!SolidAhead(ZoomLookAhead))
+            {
+                State = CatState.Walking;
+                return;
+            }
+
+            // SMASH the bit right in front of us, then move forward.
+            int a = x + dir, b = x + dir * ZoomReach;
+            ground.CarveRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight);
+            x = nextX;
+            wiggle = !wiggle;
+
+            // Keep our feet on the ground (small dips are fine, big drops mean falling)
+            for (int d = 0; d <= MaxStepDown; d++)
+            {
+                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
+            }
+            State = CatState.Falling;
+            fallDistance = 0;
+        }
+
+        bool SolidAhead(int distance)
+        {
+            for (int i = 1; i <= distance; i++)
+            {
+                int cx = x + dir * i;
+                if (cx < 0 || cx >= ground.Width) return false;
+                for (int h = 0; h < ZoomTunnelHeight; h++)
+                    if (ground.IsSolid(cx, y + h)) return true;
+            }
+            return false;
         }
 
         void Walk()
@@ -209,6 +271,11 @@ namespace Cattas
                 if ((kneadTimer / 20) % 2 == 1) flip = !flip;
                 float squish = (kneadTimer / 5) % 2 == 0 ? 1f : 0.85f;
                 transform.localScale = new Vector3(1f, squish, 1f);
+            }
+            else if (State == CatState.Zooming)
+            {
+                // Stretched out at full speed
+                transform.localScale = wiggle ? new Vector3(1.25f, 0.9f, 1f) : new Vector3(1.1f, 0.95f, 1f);
             }
             else if (IsFloating)
             {
