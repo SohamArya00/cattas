@@ -36,7 +36,7 @@ namespace Cattas
         // Which traits have been built so far. We switch these on one at a time.
         public static bool IsImplemented(CatTrait t)
         {
-            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker;
+            return t == CatTrait.LitterLord || t == CatTrait.BiscuitBaker || t == CatTrait.Fluffchute;
         }
     }
 }

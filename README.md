@@ -13,6 +13,8 @@ A bar of the 8 Cat Traits along the bottom (unbuilt ones greyed out). Pick a tra
 
 **Biscuit Baker ✅** – the cat kneads biscuits on the spot and other cats turn back. Test level now has a deadly pit under the ledge.
 
+**Fluffchute ✅** – permanent; the cat puffs up after falling a little way, drifts down slowly and never splats.
+
 ## How to run
 1. Open the project in Unity 6.
 2. Open any scene (e.g. `Assets/Scenes/SampleScene`) and press **Play**.

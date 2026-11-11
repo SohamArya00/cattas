@@ -12,6 +12,8 @@ namespace Cattas
         public const int MaxStepDown = 3;     // can walk down bumps this tall without "falling"
         public const int FallSpeed = 3;       // pixels per step while falling
         public const int SafeFallHeight = 60; // fall further than this and... splat
+        public const int FloatSpeed = 1;      // Fluffchute: pixels per step while floating
+        public const int FluffOpenHeight = 12; // Fluffchute puffs up after falling this far
         public const int DigTicksPerRow = 4;  // Litter Lord digs one pixel row every 4 steps
         public const int DigHalfWidth = 4;    // Litter Lord hole is 9 pixels wide
 
@@ -25,6 +27,7 @@ namespace Cattas
         int digTimer;
         bool wiggle;
         int kneadTimer;
+        bool hasFluffchute; // permanent once given
 
         GameBootstrap game;
         DiggableGround ground;
@@ -86,6 +89,12 @@ namespace Cattas
                     if (State != CatState.Walking) return false; // must be standing on ground
                     State = CatState.Digging;
                     digTimer = 0;
+                    return true;
+                case CatTrait.Fluffchute:
+                    // Can be given while walking, falling or digging - and it lasts forever.
+                    if (hasFluffchute) return false;
+                    if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
+                    hasFluffchute = true;
                     return true;
                 case CatTrait.BiscuitBaker:
                     if (State != CatState.Walking) return false;
@@ -160,9 +169,12 @@ namespace Cattas
             fallDistance = 0;
         }
 
+        bool IsFloating => State == CatState.Falling && hasFluffchute && fallDistance >= FluffOpenHeight;
+
         void Fall()
         {
-            for (int i = 0; i < FallSpeed; i++)
+            int speed = IsFloating ? FloatSpeed : FallSpeed;
+            for (int i = 0; i < speed; i++)
             {
                 if (ground.IsSolid(x, y - 1)) { Land(); return; }
                 y--;
@@ -172,7 +184,7 @@ namespace Cattas
 
         void Land()
         {
-            if (fallDistance > SafeFallHeight)
+            if (fallDistance > SafeFallHeight && !hasFluffchute)
             {
                 State = CatState.Splatted;
                 game.OnCatLost(this);
@@ -198,9 +210,15 @@ namespace Cattas
                 float squish = (kneadTimer / 5) % 2 == 0 ? 1f : 0.85f;
                 transform.localScale = new Vector3(1f, squish, 1f);
             }
+            else if (IsFloating)
+            {
+                // All fluffed up like a dandelion, drifting down
+                transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+            }
             else if (State != CatState.Splatted)
             {
-                transform.localScale = Vector3.one;
+                // Cats with a Fluffchute ready are permanently a bit fluffier, so you can spot them
+                transform.localScale = hasFluffchute ? new Vector3(1.15f, 1.15f, 1f) : Vector3.one;
             }
             sr.flipX = flip;
         }
