@@ -31,7 +31,12 @@ namespace Cattas
         CatTrait selectedTrait = CatTrait.LitterLord;
 
         int released, saved, lost, ticksUntilNextCat, ticksLeft;
-        bool fastForward, timeUp;
+        bool timeUp;
+
+        // Game speed in %: 50 = normal, 100 = double speed.
+        // Players can only speed up from the level's starting speed (slower than normal will be an NG+ unlock).
+        float speedPercent = 50f;
+        int minSpeedPercent = 50;
         float tickTimer;
 
         // Saved progress (stays between play sessions)
@@ -151,6 +156,8 @@ namespace Cattas
             ticksLeft = level.timeSeconds * TicksPerSecond;
             for (int i = 0; i < traitsLeft.Length; i++) traitsLeft[i] = level.traits[i];
             selectedTrait = FirstAvailableTrait();
+            minSpeedPercent = level.speed;
+            speedPercent = level.speed;
 
             levelWidth = level.PixelWidth;
             levelHeight = level.PixelHeight;
@@ -268,7 +275,7 @@ namespace Cattas
                 ClampCamera();
             }
 
-            tickTimer += Time.deltaTime * (fastForward ? 3f : 1f);
+            tickTimer += Time.deltaTime * (speedPercent / 50f);
             float tickLength = 1f / TicksPerSecond;
             int safety = 0;
             while (tickTimer >= tickLength && safety++ < 20 && mode == GameMode.Playing)
@@ -504,11 +511,18 @@ namespace Cattas
             float bw = fs * 7;
             if (mode == GameMode.Playing)
             {
-                if (GUI.Button(new Rect(Screen.width - pad - bw, pad, bw, lineH), fastForward ? "Speed: 3x" : "Speed: 1x", button))
-                    fastForward = !fastForward;
-                if (GUI.Button(new Rect(Screen.width - pad - bw, pad + lineH * 1.2f, bw, lineH), "Restart", button))
+                // Speed slider
+                float sw = fs * 10f, sx = Screen.width - pad - sw;
+                GUI.Box(new Rect(sx - pad * 0.5f, pad * 0.5f, sw + pad, lineH * 1.9f), GUIContent.none);
+                GUI.Label(new Rect(sx, pad * 0.5f, sw, lineH), $"Speed {Mathf.RoundToInt(speedPercent)}%",
+                    new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
+                speedPercent = Mathf.Round(GUI.HorizontalSlider(new Rect(sx, pad * 0.5f + lineH, sw, lineH * 0.7f),
+                    speedPercent, minSpeedPercent, 100f));
+
+                float by = pad + lineH * 2f;
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by, bw, lineH), "Restart", button))
                     BuildLevel();
-                if (GUI.Button(new Rect(Screen.width - pad - bw, pad + lineH * 2.4f, bw, lineH), "Levels", button))
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 1.2f, bw, lineH), "Levels", button))
                 {
                     ClearLevel();
                     mode = GameMode.Menu;

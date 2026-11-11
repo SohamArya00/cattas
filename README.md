@@ -48,7 +48,7 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `H` | hatch – cats drop out of here |
 | `E` | exit – put ground under it |
 
-Settings: `name`, `hint`, `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`).
+Settings: `name`, `hint`, `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
 Maps are normally 45 rows tall; make them wider than 80 columns for a scrolling level.
 
 Handy numbers: cats can step up 6px (less than one block — use ramps!), and falls over 60px (more than 7 blocks) splat without a Fluffchute.

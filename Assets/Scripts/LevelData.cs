@@ -22,6 +22,7 @@ namespace Cattas
         public int need = 5;
         public int timeSeconds = 300;
         public float rate = 1.5f; // seconds between cats
+        public int speed = 50;    // starting game speed in % (50 = normal). Players can only speed up from here.
         public readonly int[] traits = new int[CatTraits.Count];
         public readonly List<string> rows = new List<string>();
 
@@ -45,6 +46,13 @@ namespace Cattas
 
         public static LevelData Parse(string text)
         {
+            var d = ParseRaw(text);
+            d.speed = Mathf.Clamp(d.speed, 1, 100);
+            return d;
+        }
+
+        static LevelData ParseRaw(string text)
+        {
             var d = new LevelData();
             bool inMap = false;
             foreach (var raw in text.Replace("\r", "").Split('\n'))
@@ -67,6 +75,7 @@ namespace Cattas
                     case "need": int.TryParse(val, out d.need); break;
                     case "time": int.TryParse(val, out d.timeSeconds); break;
                     case "rate": float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out d.rate); break;
+                    case "speed": int.TryParse(val, out d.speed); break;
                     case "traits": ParseTraits(d, val); break;
                 }
             }

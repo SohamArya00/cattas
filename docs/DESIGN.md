@@ -31,6 +31,7 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
   - NG+1: +5 of every trait on top of the base allowance. NG+2: +10, etc.
   - **Golden Trait** on every 10th level in NG+ only: usable once in NG+1, twice in NG+2, etc.
 - **Golden Traits only in NG+**, on every 10th level.
+- **Game speed:** slider from 50% (normal) to 100% (double). Some levels can start slower (players can only speed up). The full 1–100% range (slow-mo) is an NG+ unlock.
 - **NG+2** unlocks the **Level Builder**: players design and share levels. Paying creators (e.g. per download, as DLC) is a goal, but needs legal/tax/moderation research and Steam's rules first – start with free sharing (Steam Workshop).
 
 ## Levels 1–10
