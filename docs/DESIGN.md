@@ -109,6 +109,11 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - Artist – TBD name
 - Music & SFX – TBD name
 
+## Next session (agreed plan)
+1. **Trait activation animations**: a short "ta-da" moment when a trait is given to a kitten (e.g. puff of fur and a sparkle, the kitten looks up, a little icon pops over its head), plus richer puppet poses per trait.
+2. **Level 1 rebuilt as a real first level**: AI placeholder art (Codi generates it from a layout guide, Claude wires it in) and a gentle tutorial that teaches one or two traits (e.g. Litter Lord, then Biscuit Baker) with on-screen hints.
+3. Ideas for how each early level teaches its trait (show, then let the player try, then twist).
+
 ## Roadmap
 - [x] Step 0 – Unity installed, project created
 - [x] Step 1 – Grey-box: walking, falling, splat, exit, destructible ground
