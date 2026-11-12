@@ -166,7 +166,7 @@ class Cat:
         if nx < 0 or nx >= lv.W or s.blocked(nx): s.dir = -s.dir; s.state = "walk"; return
         if not s.solid_ahead(12, 0, 11): s.state = "walk"; return
         a, b = s.x + s.dir, s.x + s.dir * 5
-        if lv.has_hard(min(a, b), s.y, max(a, b) + 1, s.y + 11): s.state = "walk"; return
+        if lv.has_hard(min(a, b), s.y, max(a, b) + 1, s.y + 4): s.state = "walk"; return
         lv.carve_rect(min(a, b), s.y, max(a, b) + 1, s.y + 11); s.x = nx
         for d in range(4):
             if lv.is_solid(s.x, s.y - 1 - d): s.y -= d; return
@@ -185,7 +185,7 @@ class Cat:
         if nx < 0 or nx >= lv.W: s.dir = -s.dir; s.state = "walk"; return
         if not s.solid_ahead(6, -1, 10): s.state = "walk"; return
         a, b = s.x + s.dir, s.x + s.dir * 4
-        if lv.has_hard(min(a, b), s.y - 1, max(a, b) + 1, s.y + 10): s.state = "walk"; return
+        if lv.has_hard(min(a, b), s.y - 1, max(a, b) + 1, s.y + 3): s.state = "walk"; return
         lv.carve_rect(min(a, b), s.y - 1, max(a, b) + 1, s.y + 10); s.x = nx; s.y -= 1
         if not lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0
     def build(s):
@@ -288,6 +288,6 @@ if __name__ == "__main__":
     allok &= check("kitchen", "Bridge sink, baker, scratch to floor, free baker", [
         (walking_near(336, 343, 200, 1), "HairballBridge"),
         (walking_near(312, 330, 200), "BiscuitBaker"),
-        (walking_near(415, 440, 200, 1), "Scratcher"),
+        (walking_near(396, 412, 200, 1), "Scratcher"),
         (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
     print("ALL GOOD" if allok else "SOME CHECKS FAILED")

@@ -259,9 +259,10 @@ namespace Cattas
 
             // SMASH the bit right in front of us, then move forward.
             int a = x + dir, b = x + dir * ZoomReach;
-            if (ground.HasHardIn(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight))
+            // Stone or metal in the way of our legs: bonk, zoomies over. (Stone overhead doesn't stop us.)
+            if (ground.HasHardIn(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + 4))
             {
-                State = CatState.Walking; // bonk - stone. Zoomies over.
+                State = CatState.Walking;
                 return;
             }
             game.Fx(FxKind.Smash, x + dir * 3, y + 4);
@@ -338,9 +339,11 @@ namespace Cattas
 
             // Claw away the ground in front of us and just below our feet line
             int a = x + dir, b = x + dir * ScratchReach;
-            if (ground.HasHardIn(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + CatHeight))
+            // Stone or metal right where our paws are? Then we can't get through.
+            // (Stone higher up is fine - the claws just go underneath it.)
+            if (ground.HasHardIn(Mathf.Min(a, b), y - 1, Mathf.Max(a, b) + 1, y + 3))
             {
-                State = CatState.Walking; // stone - can't scratch that
+                State = CatState.Walking;
                 return;
             }
             game.Fx(FxKind.Dig, x + dir * 2, y);

@@ -5,7 +5,7 @@ Game coordinates: y measured UP from the bottom. Everything is supersampled for 
 Layout (game pixels):
   floor tiles 0-40 (stone) | window sill top 316 (x30-215) | shelf top 258 (x205-300)
   left worktop top 200 (x0-560) with sink (outer 336-392, water inside) and toaster (466-506)
-  fridge 560-664 up to 480 (metal), gap underneath 40-52 | stove 664-784, top 200, gas burners
+  fridge 560-664 from 64 up to 480 (metal), on legs with a gap underneath 40-64 | stove 664-784, top 200, gas burners
   right worktop 784-880 top 200 on legs (open underneath) | cat bed (exit) on the floor ~924
 """
 import os, random, math
@@ -114,7 +114,7 @@ for bx in (214, 288): P.poly([(bx, 252), (bx + 6, 252), (bx + 6, 244)], WOOD_D) 
 P.rect(372, 200, 376, 232, STEEL); P.arc(358, 220, 386, 244, 0, 180, STEEL, 4)
 P.rect(357, 220, 361, 229, STEEL); P.ell(374, 202, 6, 2, STEEL_D)
 # fridge feet + shadow under fridge and stove
-P.rect(566, 40, 576, 52, (90, 90, 96, 255)); P.rect(648, 40, 658, 52, (90, 90, 96, 255))
+P.poly([(566, 40), (574, 40), (578, 64), (568, 64)], (110, 110, 118, 255)); P.poly([(650, 40), (658, 40), (656, 64), (646, 64)], (110, 110, 118, 255))
 P.rect(670, 40, 680, 52, (90, 90, 96, 255)); P.rect(768, 40, 778, 52, (90, 90, 96, 255))
 # stove back panel + range hood + hanging rail
 P.rrect(666, 200, 782, 236, 3, MINT, INK, 1)
@@ -157,7 +157,7 @@ P.poly([(916, 85), (932, 85), (924, 75)], (238, 120, 140, 255))
 P.pie(866, 34, 888, 50, 180, 360, (240, 150, 160, 255)); P.ell(877, 42, 11, 2, (200, 140, 90, 255))
 # soft shadows for depth
 bg = soft_shadow(bg, [(0, 200, 560, 208), (664, 200, 960, 208), (664, 236, 676, 480), (30, 296, 215, 306),
-                      (205, 248, 300, 252), (560, 40, 664, 50), (664, 40, 784, 50)])
+                      (205, 248, 300, 252), (560, 40, 664, 62), (664, 40, 784, 50)])
 save(bg, "kitchen_bg")
 
 # =============================================================== FOREGROUND (solid)
@@ -191,9 +191,9 @@ P.rect(500, 206, 508, 210, (80, 80, 86, 255)); P.rect(470, 208, 474, 222, STEEL_
 P.rrect(30, 306, 215, 316, 2, (240, 234, 222, 255), INK, 1); P.rect(31, 314, 214, 316, CREAM)
 P.rrect(205, 252, 300, 258, 1.5, WOOD, WOOD_D, 0.6); P.rect(206, 257, 299, 258, WOOD_L)
 # fridge (metal), sits on feet - the gap underneath is open
-P.rrect(560, 52, 664, 480, 16, (170, 220, 205, 255), INK, 1, top_only=True)
+P.rrect(560, 64, 664, 480, 16, (170, 220, 205, 255), INK, 1, top_only=True)
 P.rect(562, 372, 662, 376, MINT_D)
-P.rect(568, 70, 576, 362, (200, 236, 224, 255)); P.rect(568, 386, 576, 466, (200, 236, 224, 255))
+P.rect(568, 80, 576, 362, (200, 236, 224, 255)); P.rect(568, 386, 576, 466, (200, 236, 224, 255))
 P.rrect(648, 260, 655, 330, 2, STEEL_L, STEEL_D, 0.7); P.rrect(648, 390, 655, 430, 2, STEEL_L, STEEL_D, 0.7)
 for mx, my, col in [(592, 330, (240, 120, 140, 255)), (614, 338, (250, 210, 100, 255)), (600, 306, (120, 170, 230, 255))]:
     P.ell(mx, my, 4, 4, col)
