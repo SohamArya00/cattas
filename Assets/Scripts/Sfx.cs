@@ -105,6 +105,43 @@ namespace Cattas
             float lpF = 0f;
             Make("puff", 0.25f, t => { lpF += (Noise() - lpF) * 0.05f; return lpF * 2.2f * Attack(t, 0.05f) * Decay(t, 10f); });
 
+            // falling into water
+            float lpW = 0f;
+            Make("splash", 0.45f, t =>
+            {
+                lpW += (Noise() - lpW) * 0.3f;
+                float bloop = Sweep(t, 600f, 180f, 0.45f) * Decay(t, 9f) * 0.35f;
+                return (lpW * Decay(t, 7f) * 1.1f + bloop);
+            });
+
+            // singed on the hob
+            Make("sizzle", 0.5f, t => Noise() * (0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * 90f * t)) * Attack(t, 0.02f) * Decay(t, 5f) * 0.5f);
+
+            // something knocked over
+            float lpC = 0f;
+            Make("clatter", 0.35f, t =>
+            {
+                lpC += (Noise() - lpC) * 0.5f;
+                float hits = (t < 0.04f || (t > 0.12f && t < 0.15f) || (t > 0.22f && t < 0.24f)) ? 1f : 0.15f;
+                return (lpC * hits + Tone(t, 1700f) * 0.15f * Decay(t, 12f)) * Decay(t, 5f) * 0.8f;
+            });
+
+            // secret found: sparkly arpeggio
+            Make("secret", 1.0f, t =>
+            {
+                float[] notes = { 783.99f, 987.77f, 1174.66f, 1567.98f, 1975.53f };
+                float v = 0f;
+                for (int i = 0; i < notes.Length; i++)
+                {
+                    float s = t - i * 0.07f;
+                    if (s > 0f) v += Tone(s, notes[i]) * Decay(s, 5f);
+                }
+                return v * 0.18f;
+            });
+
+            // a switch / valve turned
+            Make("clunk", 0.3f, t => (Tone(t, 140f) * 0.6f + Noise() * 0.3f) * Decay(t, 18f) + Noise() * 0.15f * Mathf.Clamp01(t - 0.05f) * Decay(t, 6f));
+
             // level complete jingle (C E G C)
             Make("win", 0.9f, t =>
             {

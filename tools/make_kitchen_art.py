@@ -1,244 +1,263 @@
-"""Draws placeholder art for the Kitchen demo level and the kitten sprite sheet.
-Outputs PNG data saved as .bytes files (Unity loads .bytes as raw data, so big images aren't resized on import).
-Game coordinates: 640x360, y measured UP from the bottom. Art is drawn at 4x (2560x1440), supersampled for smooth edges."""
+"""Draws placeholder art for the big Kitchen demo level (960x540 game pixels, art at 3x = 2880x1620),
+plus the props and secret items. Saved as PNG data in .bytes files (Unity loads .bytes as raw data).
+Game coordinates: y measured UP from the bottom. Everything is supersampled for smooth edges.
+
+Layout (game pixels):
+  floor tiles 0-40 (stone) | window sill top 316 (x30-215) | shelf top 258 (x205-300)
+  left worktop top 200 (x0-560) with sink (outer 336-392, water inside) and toaster (466-506)
+  fridge 560-664 up to 480 (metal), gap underneath 40-52 | stove 664-784, top 200, gas burners
+  right worktop 784-880 top 200 on legs (open underneath) | cat bed (exit) on the floor ~924
+"""
 import os, random, math
 from PIL import Image, ImageDraw, ImageFilter
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Art")
-GW, GH, K = 640, 360, 4          # game size and art scale
-SS = 2                           # supersampling
+HERE = os.path.dirname(__file__)
+OUT = os.path.join(HERE, "..", "Assets", "Resources", "Art")
+GW, GH, K = 960, 540, 3
+SS = 2
 S = K * SS
 IW, IH = GW * S, GH * S
 
-def box(x0, y0, x1, y1):
-    """game rect (y up) -> PIL box at supersampled resolution"""
-    return [x0 * S, IH - y1 * S, x1 * S, IH - y0 * S]
-def pt(x, y): return (x * S, IH - y * S)
+def box(x0, y0, x1, y1, h=IH):
+    return [x0 * S, h - y1 * S, x1 * S, h - y0 * S]
+def pt(x, y, h=IH): return (x * S, h - y * S)
 
-def save(img, name):
+def save(img, name, preview=True):
     img = img.resize((img.width // SS, img.height // SS), Image.LANCZOS)
     path = os.path.join(OUT, name + ".bytes")
     img.save(path, format="PNG", optimize=True)
-    img.save(os.path.join(os.path.dirname(__file__), name + "_preview.png"))
+    if preview: img.save(os.path.join(HERE, name + "_preview.png"))
     print(name, img.size, os.path.getsize(path) // 1024, "KB")
+    return img
 
-def rrect(d, b, r, fill, outline=None, width=0):
-    d.rounded_rectangle(box(*b), radius=r * S, fill=fill, outline=outline, width=width * S if width else 0)
+class Pen:
+    """Drawing helpers in game coordinates for one image of game-size (w, h)."""
+    def __init__(self, img, h):
+        self.d = ImageDraw.Draw(img); self.h = h * S
+    def b(self, x0, y0, x1, y1): return box(x0, y0, x1, y1, self.h)
+    def p(self, x, y): return pt(x, y, self.h)
+    def rect(self, x0, y0, x1, y1, fill): self.d.rectangle(self.b(x0, y0, x1, y1), fill=fill)
+    def rrect(self, x0, y0, x1, y1, r, fill, outline=None, width=0, top_only=False):
+        corners = (True, True, False, False) if top_only else None
+        self.d.rounded_rectangle(self.b(x0, y0, x1, y1), radius=r * S, fill=fill, outline=outline, width=int(width * S), corners=corners)
+    def ell(self, cx, cy, rx, ry, fill, outline=None, width=0):
+        self.d.ellipse(self.b(cx - rx, cy - ry, cx + rx, cy + ry), fill=fill, outline=outline, width=int(width * S))
+    def poly(self, pts, fill): self.d.polygon([self.p(x, y) for x, y in pts], fill=fill)
+    def line(self, pts, fill, width): self.d.line([self.p(x, y) for x, y in pts], fill=fill, width=int(width * S))
+    def arc(self, x0, y0, x1, y1, a0, a1, fill, width): self.d.arc(self.b(x0, y0, x1, y1), a0, a1, fill=fill, width=int(width * S))
+    def pie(self, x0, y0, x1, y1, a0, a1, fill): self.d.pieslice(self.b(x0, y0, x1, y1), a0, a1, fill=fill)
 
-def ellipse(d, cx, cy, rx, ry, fill):
-    d.ellipse(box(cx - rx, cy - ry, cx + rx, cy + ry), fill=fill)
-
-INK = (92, 64, 58, 255)          # soft dark outline colour
+INK = (92, 64, 58, 255)
 MINT = (164, 214, 196, 255); MINT_D = (128, 182, 164, 255); MINT_L = (196, 232, 219, 255)
 WOOD = (204, 156, 110, 255); WOOD_L = (226, 186, 142, 255); WOOD_D = (170, 122, 84, 255)
-STEEL = (205, 212, 218, 255); STEEL_D = (160, 168, 176, 255)
-random.seed(7)
+STEEL = (205, 212, 218, 255); STEEL_D = (150, 158, 168, 255); STEEL_L = (236, 240, 244, 255)
+CREAM = (252, 250, 244, 255); BRASS = (210, 180, 110, 255)
+GOLD = (246, 200, 70, 255); GOLD_D = (200, 150, 40, 255); GOLD_L = (255, 236, 150, 255)
+random.seed(11)
 
-# ---------------------------------------------------------------- background
-bg = Image.new("RGBA", (IW, IH), (250, 240, 226, 255))
-d = ImageDraw.Draw(bg)
-# wallpaper: tiny roses and leaves
-for row, gy in enumerate(range(160, 360, 22)):
-    for gx in range(-10, 660, 26):
+def soft_shadow(img, rects, blur=6, alpha=70):
+    sh = Image.new("RGBA", img.size, (0, 0, 0, 0)); sd = Pen(sh, GH)
+    for r in rects: sd.rect(*r, (70, 50, 42, alpha))
+    sh = sh.filter(ImageFilter.GaussianBlur(blur * S))
+    return Image.alpha_composite(img, sh)
+
+# =============================================================== BACKGROUND
+bg = Image.new("RGBA", (IW, IH), (250, 240, 226, 255)); P = Pen(bg, GH)
+for row, gy in enumerate(range(212, 530, 22)):                    # rose wallpaper
+    for gx in range(-10, 980, 26):
         x = gx + (13 if row % 2 else 0) + random.uniform(-3, 3); y = gy + random.uniform(-3, 3)
-        ellipse(d, x - 3.2, y - 1.5, 2.6, 1.2, (176, 206, 166, 255)); ellipse(d, x + 3.2, y - 1.8, 2.6, 1.2, (176, 206, 166, 255))
+        P.ell(x - 3.2, y - 1.5, 2.6, 1.2, (176, 206, 166, 255)); P.ell(x + 3.2, y - 1.8, 2.6, 1.2, (176, 206, 166, 255))
         for a in range(5):
             ang = a * 2 * math.pi / 5 + 0.3
-            ellipse(d, x + math.cos(ang) * 1.9, y + math.sin(ang) * 1.9, 1.7, 1.7, (240, 180, 190, 255))
-        ellipse(d, x, y, 1.0, 1.0, (250, 222, 150, 255))
-# cornice
-d.rectangle(box(0, 346, 640, 360), fill=(238, 222, 202, 255)); d.rectangle(box(0, 345, 640, 347), fill=(218, 198, 176, 255))
-# tiled backsplash behind the worktops
-d.rectangle(box(0, 150, 640, 214), fill=(232, 244, 239, 255))
-for x in range(0, 641, 10): d.rectangle(box(x - 0.3, 150, x + 0.3, 214), fill=(206, 222, 215, 255))
-for y in range(150, 215, 10): d.rectangle(box(0, y - 0.3, 640, y + 0.3), fill=(206, 222, 215, 255))
-d.rectangle(box(0, 213, 640, 216), fill=(214, 230, 223, 255))
-# soft shadows for depth (wall just above worktops, and beside the fridge)
-for i in range(8):
-    a = int(60 * (1 - i / 8))
-    d.rectangle(box(0, 150 + i, 640, 151 + i), fill=(90, 70, 60, 0))
-sh = Image.new("RGBA", (IW, IH), (0, 0, 0, 0)); sd = ImageDraw.Draw(sh)
-sd.rectangle(box(0, 150, 640, 158), fill=(80, 60, 50, 70)); sd.rectangle(box(350, 150, 362, 334), fill=(80, 60, 50, 60))
-sd.rectangle(box(15, 196, 152, 200), fill=(80, 60, 50, 60))
-sh = sh.filter(ImageFilter.GaussianBlur(6 * S)); bg = Image.alpha_composite(bg, sh); d = ImageDraw.Draw(bg)
-# window
-rrect(d, (22, 208, 148, 338), 3, (252, 250, 244, 255), INK, 1)
-sky = Image.new("RGBA", ((140 - 30) * S, (330 - 216) * S))
+            P.ell(x + math.cos(ang) * 1.9, y + math.sin(ang) * 1.9, 1.7, 1.7, (240, 180, 190, 255))
+        P.ell(x, y, 1.0, 1.0, (250, 222, 150, 255))
+P.rect(0, 40, 960, 212, (238, 232, 220, 255))                     # lower wall (painted)
+P.rect(0, 524, 960, 540, (238, 222, 202, 255)); P.rect(0, 522, 960, 524, (218, 198, 176, 255))   # cornice
+P.rect(0, 200, 560, 262, (232, 244, 239, 255)); P.rect(664, 200, 960, 262, (232, 244, 239, 255))  # tiled backsplash
+for x in range(0, 961, 10):
+    if 560 < x < 664: continue
+    P.rect(x - 0.3, 200, x + 0.3, 262, (206, 222, 215, 255))
+for y in range(200, 263, 10):
+    P.rect(0, y - 0.3, 560, y + 0.3, (206, 222, 215, 255)); P.rect(664, y - 0.3, 960, y + 0.3, (206, 222, 215, 255))
+P.rect(0, 40, 960, 46, (214, 200, 184, 255))                      # skirting
+# wall cabinets (decoration only)
+for x0 in (300, 400):
+    P.rrect(x0 + 3, 392, x0 + 97, 486, 3, MINT, INK, 0.7)
+    for k in range(2):
+        a = x0 + 6 + k * 46
+        P.rrect(a, 396, a + 42, 482, 3, MINT_L, MINT_D, 0.7); P.rrect(a + 5, 402, a + 37, 476, 2, MINT)
+        P.ell(a + (36 if k == 0 else 6), 410, 2, 2, BRASS)
+# window + curtains
+P.rrect(36, 318, 206, 492, 3, CREAM, INK, 1)
+sky = Image.new("RGBA", ((198 - 44) * S, (484 - 326) * S)); sdraw = ImageDraw.Draw(sky)
 for yy in range(sky.height):
     t = yy / sky.height
-    c = (int(150 + 70 * t), int(205 + 35 * t), int(240 + 10 * t), 255)
-    ImageDraw.Draw(sky).line([(0, yy), (sky.width, yy)], fill=c)
-bg.paste(sky, (30 * S, IH - 330 * S)); d = ImageDraw.Draw(bg)
-for cx, cy, r in [(55, 305, 9), (66, 309, 11), (78, 304, 8), (112, 290, 7), (121, 293, 9)]:
-    ellipse(d, cx, cy, r, r * 0.7, (255, 255, 255, 235))
-for i, (cx, r, col) in enumerate([(50, 30, (150, 200, 140, 255)), (100, 38, (130, 188, 128, 255)), (140, 25, (150, 200, 140, 255))]):
-    d.pieslice(box(cx - r, 216 - r * 0.8, cx + r, 216 + r * 0.8), 180, 360, fill=col)
-d.rectangle(box(30, 210, 140, 216), fill=(252, 250, 244, 255))
-d.rectangle(box(83, 216, 87, 330), fill=(252, 250, 244, 255)); d.rectangle(box(30, 268, 140, 272), fill=(252, 250, 244, 255))
-# curtains + rod
-for x0, x1, flip in [(10, 40, False), (130, 160, True)]:
-    poly = [pt(x0, 340), pt(x1, 340), pt(x1 - (0 if flip else 14), 200), pt(x0 + (14 if flip else 0), 200)]
-    d.polygon(poly, fill=(246, 206, 206, 255))
-    for k in range(4):
+    sdraw.line([(0, yy), (sky.width, yy)], fill=(int(150 + 70 * t), int(205 + 35 * t), int(240 + 10 * t), 255))
+bg.paste(sky, (44 * S, IH - 484 * S)); P = Pen(bg, GH)
+for cx, cy, r in [(70, 455, 10), (84, 460, 12), (98, 454, 9), (150, 438, 8), (162, 442, 10)]:
+    P.ell(cx, cy, r, r * 0.7, (255, 255, 255, 235))
+for cx, r, col in [(70, 40, (150, 200, 140, 255)), (135, 50, (130, 188, 128, 255)), (196, 32, (150, 200, 140, 255))]:
+    P.pie(cx - r, 326 - r * 0.8, cx + r, 326 + r * 0.8, 180, 360, col)
+P.rect(44, 318, 198, 326, CREAM)
+P.rect(119, 326, 123, 484, CREAM); P.rect(44, 398, 198, 402, CREAM)
+for x0, x1, flip in [(22, 58, False), (184, 220, True)]:
+    P.poly([(x0, 496), (x1, 496), (x1 - (0 if flip else 16), 300), (x0 + (16 if flip else 0), 300)], (246, 206, 206, 255))
+    for k in range(5):
         fx = x0 + 4 + k * 7
-        d.line([pt(fx, 338), pt(fx + (5 if flip else -3), 202)], fill=(226, 176, 180, 255), width=2 * S)
-    for k in range(18):
-        ellipse(d, random.uniform(x0 + 3, x1 - 6), random.uniform(205, 335), 1.2, 1.2, (238, 150, 165, 255))
-d.rectangle(box(6, 339, 164, 342), fill=(150, 104, 80, 255)); ellipse(d, 6, 340.5, 3, 3, (150, 104, 80, 255)); ellipse(d, 164, 340.5, 3, 3, (150, 104, 80, 255))
-# little plant on the sill
-d.polygon([pt(132, 210), pt(146, 210), pt(144, 221), pt(134, 221)], fill=(214, 128, 96, 255))
-for ang in (-50, -20, 10, 40, 70):
-    a = math.radians(ang + 90)
-    ellipse(d, 139 + math.cos(a) * 7, 226 + math.sin(a) * 6, 3.5, 2, (110, 170, 100, 255))
-# sill brackets
-for bx in (30, 135): d.polygon([pt(bx, 200), pt(bx + 8, 200), pt(bx + 8, 192)], fill=(236, 230, 218, 255))
+        P.line([(fx, 494), (fx + (6 if flip else -4), 302)], (226, 176, 180, 255), 2)
+    for k in range(24):
+        P.ell(random.uniform(x0 + 3, x1 - 6), random.uniform(305, 490), 1.2, 1.2, (238, 150, 165, 255))
+P.rect(16, 495, 226, 498, (150, 104, 80, 255)); P.ell(16, 496.5, 3, 3, (150, 104, 80, 255)); P.ell(226, 496.5, 3, 3, (150, 104, 80, 255))
+for bx in (40, 196): P.poly([(bx, 306), (bx + 8, 306), (bx + 8, 298)], (236, 230, 218, 255))   # sill brackets
+for bx in (214, 288): P.poly([(bx, 252), (bx + 6, 252), (bx + 6, 244)], WOOD_D)                 # shelf brackets
 # tap over the sink
-d.rectangle(box(226, 150, 230, 178), fill=STEEL); d.arc(box(214, 168, 238, 188), 0, 180, fill=STEEL, width=4 * S)
-d.rectangle(box(213, 168, 217, 176), fill=STEEL); ellipse(d, 228, 152, 6, 2, STEEL_D)
-# pan rail and pans above the stove
-d.rectangle(box(356, 300, 444, 302), fill=(150, 104, 80, 255))
-for hx, kind in [(372, "pan"), (400, "ladle"), (428, "copper")]:
-    d.line([pt(hx, 300), pt(hx, 292)], fill=(120, 110, 100, 255), width=S)
-    if kind == "pan":
-        d.rectangle(box(hx - 1.5, 270, hx + 1.5, 292), fill=(70, 70, 76, 255)); ellipse(d, hx, 260, 12, 12, (70, 70, 76, 255)); ellipse(d, hx, 260, 9, 9, (95, 95, 102, 255))
-    elif kind == "ladle":
-        d.rectangle(box(hx - 1, 262, hx + 1, 292), fill=STEEL_D); d.pieslice(box(hx - 7, 252, hx + 7, 266), 0, 180, fill=STEEL_D)
+P.rect(372, 200, 376, 232, STEEL); P.arc(358, 220, 386, 244, 0, 180, STEEL, 4)
+P.rect(357, 220, 361, 229, STEEL); P.ell(374, 202, 6, 2, STEEL_D)
+# fridge feet + shadow under fridge and stove
+P.rect(566, 40, 576, 52, (90, 90, 96, 255)); P.rect(648, 40, 658, 52, (90, 90, 96, 255))
+P.rect(670, 40, 680, 52, (90, 90, 96, 255)); P.rect(768, 40, 778, 52, (90, 90, 96, 255))
+# stove back panel + range hood + hanging rail
+P.rrect(666, 200, 782, 236, 3, MINT, INK, 1)
+for kx in (684, 704, 744, 764): P.ell(kx, 218, 4.5, 4.5, CREAM)
+P.ell(724, 218, 8, 8, CREAM); P.line([(724, 218), (724, 224)], INK, 1); P.line([(724, 218), (728, 218)], INK, 1)
+P.poly([(672, 400), (776, 400), (760, 440), (688, 440)], STEEL); P.rect(700, 440, 748, 522, STEEL)
+P.rect(672, 398, 776, 402, STEEL_D); P.rect(704, 440, 708, 522, STEEL_L)
+for hx, kind in [(694, "ladle"), (724, "whisk"), (754, "copper")]:
+    P.line([(hx, 398), (hx, 390)], (120, 110, 100, 255), 1)
+    if kind == "ladle":
+        P.rect(hx - 1, 360, hx + 1, 390, STEEL_D); P.pie(hx - 7, 350, hx + 7, 364, 0, 180, STEEL_D)
+    elif kind == "whisk":
+        P.rect(hx - 1, 372, hx + 1, 390, WOOD_D)
+        for k in range(-3, 4): P.line([(hx, 372), (hx + k * 1.6, 356), (hx, 352)], STEEL_D, 0.8)
     else:
-        d.rectangle(box(hx - 1.5, 272, hx + 1.5, 292), fill=(170, 100, 60, 255)); ellipse(d, hx, 262, 11, 11, (200, 120, 80, 255)); ellipse(d, hx, 262, 8, 8, (225, 150, 105, 255))
-# stove back panel
-rrect(d, (352, 150, 448, 178), 3, MINT, INK, 1)
-for kx in (368, 384, 416, 432): ellipse(d, kx, 164, 4, 4, (250, 248, 240, 255))
-ellipse(d, 400, 164, 7, 7, (250, 248, 240, 255)); d.line([pt(400, 164), pt(400, 169)], fill=INK, width=S); d.line([pt(400, 164), pt(403, 164)], fill=INK, width=S)
-# shelf with jars
-d.rectangle(box(462, 226, 632, 230), fill=WOOD); d.rectangle(box(462, 225, 632, 226.5), fill=WOOD_D)
-for jx, w, h, lid in [(475, 14, 22, (240, 180, 190, 255)), (495, 12, 17, MINT), (513, 14, 26, (250, 222, 150, 255))]:
-    rrect(d, (jx - w / 2, 230, jx + w / 2, 230 + h), 3, (228, 240, 244, 230), (180, 200, 206, 255), 1)
-    rrect(d, (jx - w / 2 - 1, 230 + h - 1, jx + w / 2 + 1, 230 + h + 3), 1, lid)
-rrect(d, (545, 230, 575, 246), 6, (250, 248, 240, 255), INK, 1)          # teapot
-d.polygon([pt(575, 240), pt(586, 247), pt(584, 249), pt(575, 244)], fill=(250, 248, 240, 255)); ellipse(d, 560, 248, 4, 2, MINT)
-d.polygon([pt(600, 230), pt(618, 230), pt(615, 243), pt(603, 243)], fill=(214, 128, 96, 255))
-for ang in range(-80, 81, 32):
-    a = math.radians(ang + 90); ellipse(d, 609 + math.cos(a) * 9, 252 + math.sin(a) * 8, 4, 2.2, (110, 170, 100, 255))
-# wall clock
-ellipse(d, 530, 300, 16, 16, MINT_D); ellipse(d, 530, 300, 13, 13, (252, 250, 244, 255))
-d.line([pt(530, 300), pt(530, 310)], fill=INK, width=2 * S); d.line([pt(530, 300), pt(537, 300)], fill=INK, width=2 * S)
-# cat basket (the exit) on the right worktop
-d.pieslice(box(558, 136, 602, 176), 180, 360, fill=(206, 156, 100, 255))
-for k in range(5): d.arc(box(560 + k, 138 + k, 600 - k, 174 - k), 180, 360, fill=(176, 126, 76, 255), width=S)
-ellipse(d, 580, 156, 20, 4, (246, 190, 200, 255)); ellipse(d, 580, 157, 15, 2.5, (236, 170, 184, 255))
-ellipse(d, 580, 182, 4, 3.5, (238, 120, 140, 255)); ellipse(d, 576, 184, 3, 3, (238, 120, 140, 255)); ellipse(d, 584, 184, 3, 3, (238, 120, 140, 255))
-d.polygon([pt(573, 183), pt(587, 183), pt(580, 175)], fill=(238, 120, 140, 255))   # little heart
-# food bowl
-d.pieslice(box(610, 144, 630, 158), 180, 360, fill=(240, 150, 160, 255)); ellipse(d, 620, 151, 10, 2, (200, 140, 90, 255))
+        P.rect(hx - 1.5, 372, hx + 1.5, 390, (170, 100, 60, 255)); P.ell(hx, 362, 11, 11, (200, 120, 80, 255)); P.ell(hx, 362, 8, 8, (225, 150, 105, 255))
+# pan hook over the right worktop (the frying pan itself is a separate prop)
+P.rect(808, 262, 890, 264, (150, 104, 80, 255)); P.ell(808, 263, 2, 2, (150, 104, 80, 255)); P.ell(890, 263, 2, 2, (150, 104, 80, 255))
+P.ell(872, 238, 8, 8, (200, 120, 80, 255)); P.rect(871, 245, 873, 262, (170, 100, 60, 255)); P.ell(872, 238, 5.5, 5.5, (225, 150, 105, 255))
+# right worktop legs + open shelf underneath (decoration, kittens walk through)
+for lx in (788, 872): P.rect(lx, 40, lx + 6, 190, WOOD_D)
+P.rect(788, 104, 878, 108, WOOD)
+for bx, col in [(800, (240, 180, 190, 255)), (812, (180, 210, 230, 255)), (824, (250, 222, 150, 255))]:
+    P.rrect(bx, 108, bx + 10, 140, 2, col, INK, 0.5)
+P.rrect(842, 108, 866, 126, 6, (250, 248, 240, 255), INK, 0.7)
+# calendar, clock, radiator, cat bed (exit), food bowl, rug
+P.rrect(812, 400, 860, 460, 2, CREAM, INK, 0.8); P.rect(812, 446, 860, 460, (238, 120, 140, 255))
+for gy in range(406, 444, 8):
+    for gx in range(816, 858, 8): P.rect(gx, gy, gx + 5, gy + 5, (230, 220, 210, 255))
+P.ell(900, 440, 17, 17, MINT_D); P.ell(900, 440, 14, 14, CREAM)
+P.line([(900, 440), (900, 450)], INK, 2); P.line([(900, 440), (907, 440)], INK, 2)
+P.rrect(892, 76, 952, 150, 4, CREAM, INK, 0.8)
+for rx in range(898, 948, 7): P.rrect(rx, 80, rx + 4, 146, 2, (240, 236, 228, 255), (200, 196, 188, 255), 0.5)
+P.ell(924, 40, 46, 4, (236, 170, 184, 160))                                         # rug
+P.pie(898, 26, 950, 76, 180, 360, (206, 156, 100, 255))                              # wicker cat bed
+for k in range(5): P.arc(900 + k, 28 + k, 948 - k, 74 - k, 180, 360, (176, 126, 76, 255), 1)
+P.ell(924, 50, 22, 4, (246, 190, 200, 255)); P.ell(924, 51, 17, 2.5, (236, 170, 184, 255))
+P.ell(924, 84, 5, 4, (238, 120, 140, 255)); P.ell(919, 86, 3.5, 3.5, (238, 120, 140, 255)); P.ell(929, 86, 3.5, 3.5, (238, 120, 140, 255))
+P.poly([(916, 85), (932, 85), (924, 75)], (238, 120, 140, 255))
+P.pie(866, 34, 888, 50, 180, 360, (240, 150, 160, 255)); P.ell(877, 42, 11, 2, (200, 140, 90, 255))
+# soft shadows for depth
+bg = soft_shadow(bg, [(0, 200, 560, 208), (664, 200, 960, 208), (664, 236, 676, 480), (30, 296, 215, 306),
+                      (205, 248, 300, 252), (560, 40, 664, 50), (664, 40, 784, 50)])
 save(bg, "kitchen_bg")
 
-# ---------------------------------------------------------------- foreground (solid stuff)
-fg = Image.new("RGBA", (IW, IH), (0, 0, 0, 0))
-d = ImageDraw.Draw(fg)
-# floor tiles
-for i, x in enumerate(range(0, 640, 20)):
+# =============================================================== FOREGROUND (solid)
+fg = Image.new("RGBA", (IW, IH), (0, 0, 0, 0)); P = Pen(fg, GH)
+for i, x in enumerate(range(0, 960, 20)):                          # floor tiles
     for j, y in enumerate(range(0, 40, 20)):
-        col = (246, 232, 214, 255) if (i + j) % 2 == 0 else (226, 170, 150, 255)
-        d.rectangle(box(x, y, x + 20, y + 20), fill=col)
-d.rectangle(box(0, 37, 640, 40), fill=(214, 196, 178, 255))
-def cabinets(x0, x1, drawers=False):
-    d.rectangle(box(x0, 40, x1, 140), fill=MINT)
-    d.rectangle(box(x0, 40, x1, 47), fill=MINT_D)
-    n = max(1, round((x1 - x0) / 52)); w = (x1 - x0) / n
+        P.rect(x, y, x + 20, y + 20, (246, 232, 214, 255) if (i + j) % 2 == 0 else (226, 170, 150, 255))
+P.rect(0, 37, 960, 40, (214, 196, 178, 255))
+def cabinets(x0, x1, top=190, drawers=False):
+    P.rect(x0, 40, x1, top, MINT); P.rect(x0, 40, x1, 47, MINT_D)
+    n = max(1, round((x1 - x0) / 56)); w = (x1 - x0) / n
     for k in range(n):
         a, b = x0 + k * w + 3, x0 + (k + 1) * w - 3
+        dtop = top - 4
         if drawers:
-            rrect(d, (a, 118, b, 136), 2, MINT_L, MINT_D, 1); ellipse(d, (a + b) / 2, 127, 5, 1.5, (210, 180, 110, 255))
-            top = 114
-        else:
-            top = 136
-        rrect(d, (a, 51, b, top), 3, MINT_L, MINT_D, 1)
-        rrect(d, (a + 5, 57, b - 5, top - 6), 2, MINT, None)
-        ellipse(d, b - 7 if k % 2 == 0 else a + 7, (51 + top) / 2 + 8, 2.2, 2.2, (210, 180, 110, 255))
+            P.rrect(a, top - 26, b, top - 4, 2, MINT_L, MINT_D, 0.7); P.ell((a + b) / 2, top - 15, 5, 1.5, BRASS)
+            dtop = top - 30
+        P.rrect(a, 51, b, dtop, 3, MINT_L, MINT_D, 0.7); P.rrect(a + 5, 57, b - 5, dtop - 6, 2, MINT)
+        P.ell(b - 7 if k % 2 == 0 else a + 7, (51 + dtop) / 2 + 10, 2.2, 2.2, BRASS)
 def worktop(x0, x1):
-    d.rectangle(box(x0, 140, x1, 150), fill=WOOD)
-    d.rectangle(box(x0, 148, x1, 150), fill=WOOD_L); d.rectangle(box(x0, 140, x1, 141.5), fill=WOOD_D)
-    for x in range(int(x0) + 23, int(x1), 31): d.rectangle(box(x, 141.5, x + 0.6, 148), fill=WOOD_D)
-cabinets(0, 270); worktop(0, 272)
-cabinets(450, 640, drawers=True); worktop(448, 640)
-# sink: steel basin cut into the left worktop (walls 200-208 and 248-256, bottom 104-112, open inside)
-d.rectangle(box(200, 104, 256, 150), fill=STEEL)
-d.rectangle(box(208, 112, 248, 150), fill=(0, 0, 0, 0))
-d.rectangle(box(200, 148, 256, 150), fill=(232, 236, 240, 255))
-d.rectangle(box(208, 112, 248, 118), fill=(140, 190, 230, 110))     # water - see-through, not solid
-d.rectangle(box(201, 105, 203, 147), fill=(232, 236, 240, 255)); d.rectangle(box(253, 105, 255, 147), fill=STEEL_D)
-# window sill
-rrect(d, (14, 200, 152, 210), 2, (240, 234, 222, 255), INK, 1)
-d.rectangle(box(15, 208, 151, 210), fill=(252, 250, 244, 255))
-# fridge
-rrect(d, (270, 44, 350, 330), 14, (170, 220, 205, 255), INK, 1)
-d.rectangle(box(272, 255, 348, 258), fill=MINT_D)
-d.rectangle(box(276, 60, 282, 250), fill=(200, 236, 224, 255)); d.rectangle(box(276, 265, 282, 320), fill=(200, 236, 224, 255))
-rrect(d, (336, 190, 341, 240), 2, (232, 236, 240, 255), STEEL_D, 1); rrect(d, (336, 268, 341, 300), 2, (232, 236, 240, 255), STEEL_D, 1)
-d.rectangle(box(276, 40, 286, 46), fill=(90, 90, 96, 255)); d.rectangle(box(334, 40, 344, 46), fill=(90, 90, 96, 255))
-for mx, my, col in [(300, 222, (240, 120, 140, 255)), (318, 230, (250, 210, 100, 255)), (306, 200, (120, 170, 230, 255))]:
-    ellipse(d, mx, my, 3.5, 3.5, col)
-rrect(d, (296, 150, 326, 182), 1, (255, 255, 255, 255), (200, 200, 200, 255), 1)          # kid's drawing of a cat
-d.polygon([pt(304, 160), pt(318, 160), pt(318, 170), pt(304, 170)], fill=(250, 222, 190, 255))
-d.polygon([pt(304, 170), pt(307, 176), pt(309, 170)], fill=(120, 90, 80, 255)); d.polygon([pt(313, 170), pt(315, 176), pt(318, 170)], fill=(120, 90, 80, 255))
-# stove
-d.rectangle(box(350, 40, 450, 150), fill=MINT)
-d.rectangle(box(350, 40, 450, 47), fill=MINT_D)
-rrect(d, (360, 62, 440, 120), 4, (250, 248, 240, 255), INK, 1)
-rrect(d, (368, 70, 432, 112), 3, (70, 64, 70, 255)); d.polygon([pt(372, 108), pt(386, 108), pt(400, 74), pt(392, 74)], fill=(110, 104, 112, 255))
-rrect(d, (366, 124, 434, 128), 2, (232, 236, 240, 255), STEEL_D, 1)
-for kx in range(366, 440, 17): ellipse(d, kx, 138, 4, 4, (250, 248, 240, 255)); d.line([pt(kx, 138), pt(kx, 141)], fill=INK, width=S)
-d.rectangle(box(350, 145, 450, 150), fill=(80, 80, 86, 255))
-for bx in (372, 428): d.rectangle(box(bx - 12, 150, bx + 12, 152), fill=(60, 60, 64, 255))
-fg = fg.filter(ImageFilter.SMOOTH) if False else fg
+    P.rect(x0, 190, x1, 200, WOOD); P.rect(x0, 198, x1, 200, WOOD_L); P.rect(x0, 190, x1, 191.5, WOOD_D)
+    for x in range(int(x0) + 23, int(x1), 31): P.rect(x, 191.5, x + 0.6, 198, WOOD_D)
+cabinets(0, 560, drawers=True); worktop(0, 560)
+# sink: walls 336-344 & 384-392, bottom 152-160, open inside (the water is drawn by the game)
+P.rect(336, 152, 392, 200, STEEL); P.rect(344, 160, 384, 200, (0, 0, 0, 0))
+P.rect(336, 198, 344, 200, STEEL_L); P.rect(384, 198, 392, 200, STEEL_L); P.rect(337, 153, 339, 197, STEEL_L); P.rect(389, 153, 391, 197, STEEL_D)
+# toaster (metal)
+P.rrect(466, 200, 506, 228, 6, STEEL, INK, 0.8, top_only=True); P.rect(472, 226, 480, 230, (80, 80, 86, 255)); P.rect(490, 226, 498, 230, (80, 80, 86, 255))
+P.rect(500, 206, 508, 210, (80, 80, 86, 255)); P.rect(470, 208, 474, 222, STEEL_L)
+# window sill + shelf
+P.rrect(30, 306, 215, 316, 2, (240, 234, 222, 255), INK, 1); P.rect(31, 314, 214, 316, CREAM)
+P.rrect(205, 252, 300, 258, 1.5, WOOD, WOOD_D, 0.6); P.rect(206, 257, 299, 258, WOOD_L)
+# fridge (metal), sits on feet - the gap underneath is open
+P.rrect(560, 52, 664, 480, 16, (170, 220, 205, 255), INK, 1, top_only=True)
+P.rect(562, 372, 662, 376, MINT_D)
+P.rect(568, 70, 576, 362, (200, 236, 224, 255)); P.rect(568, 386, 576, 466, (200, 236, 224, 255))
+P.rrect(648, 260, 655, 330, 2, STEEL_L, STEEL_D, 0.7); P.rrect(648, 390, 655, 430, 2, STEEL_L, STEEL_D, 0.7)
+for mx, my, col in [(592, 330, (240, 120, 140, 255)), (614, 338, (250, 210, 100, 255)), (600, 306, (120, 170, 230, 255))]:
+    P.ell(mx, my, 4, 4, col)
+P.rrect(590, 230, 630, 272, 1, (255, 255, 255, 255), (200, 200, 200, 255), 0.7)        # kid's drawing of a cat
+P.poly([(600, 240), (620, 240), (620, 254), (600, 254)], (250, 222, 190, 255))
+P.poly([(600, 254), (604, 262), (607, 254)], (120, 90, 80, 255)); P.poly([(613, 254), (616, 262), (620, 254)], (120, 90, 80, 255))
+# stove (gap underneath for the gas valve)
+P.rect(664, 52, 784, 200, MINT); P.rect(664, 52, 784, 58, MINT_D)
+P.rrect(676, 76, 772, 146, 4, CREAM, INK, 1)
+P.rrect(686, 86, 762, 136, 3, (70, 64, 70, 255)); P.poly([(692, 132), (708, 132), (726, 90), (716, 90)], (110, 104, 112, 255))
+P.rrect(682, 152, 766, 157, 2, STEEL_L, STEEL_D, 0.7)
+for kx in range(684, 770, 20): P.ell(kx, 172, 4.5, 4.5, CREAM); P.line([(kx, 172), (kx, 176)], INK, 1)
+P.rect(664, 186, 784, 200, (70, 70, 76, 255))
+for bx in (696, 752): P.rect(bx - 16, 199, bx + 16, 201, (40, 40, 44, 255))
+# right worktop (on legs - the legs are background)
+worktop(784, 880)
 save(fg, "kitchen_fg")
 
-# ---------------------------------------------------------------- kitten sprite sheet (your cat!)
-FW, FH, CS = 48, 40, 8           # frame size at art scale, supersample
-CREAM = (246, 234, 214, 255); SHADE = (226, 206, 182, 255); POINT = (96, 66, 54, 255); POINT_L = (138, 100, 80, 255)
-WHITE = (255, 252, 246, 255); EYE = (110, 182, 236, 255)
+# =============================================================== PROPS + SECRETS (small separate pictures)
+def prop(name, w, h, draw):
+    img = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0)); pen = Pen(img, h)
+    draw(pen, w, h)
+    a = img.split()[3].filter(ImageFilter.MaxFilter(2 * SS + 1))                 # soft outline
+    ol = Image.new("RGBA", img.size, (80, 56, 48, 255)); ol.putalpha(a)
+    out = Image.alpha_composite(ol, img)
+    out = out.resize((w * K, h * K), Image.LANCZOS)
+    out.save(os.path.join(OUT, name + ".bytes"), format="PNG")
+    out.resize((w * K * 2, h * K * 2), Image.LANCZOS).save(os.path.join(HERE, name + "_preview.png"))
+    print(name, out.size)
 
-def kitten(legs, tail_up=0.0, ears_up=0.0, mouth_open=False):
-    im = Image.new("RGBA", (FW * CS, FH * CS), (0, 0, 0, 0)); dd = ImageDraw.Draw(im)
-    def e(cx, cy, rx, ry, col): dd.ellipse([(cx - rx) * CS, (cy - ry) * CS, (cx + rx) * CS, (cy + ry) * CS], fill=col)
-    def poly(pts, col): dd.polygon([(x * CS, y * CS) for x, y in pts], fill=col)
-    # tail (fluffy, dark)
-    for i in range(7):
-        t = i / 6
-        tx = 12 - 7 * t; ty = 24 - (10 + 6 * tail_up) * t * t - 2 * t
-        e(tx, ty, 3.4 - t * 0.6, 3.4 - t * 0.6, POINT if t > 0.3 else POINT_L)
-    # back legs, body, front legs
-    for lx, ly in legs[:2]: e(lx, 33 + ly * 0.3, 3, 5, SHADE); e(lx + 0.5, 37.2 + ly * 0.2, 3.1, 2.2, POINT)
-    e(22, 26, 13, 9, CREAM); e(22, 29, 11, 5, SHADE); e(20, 22, 10, 5, CREAM)
-    for lx, ly in legs[2:]: e(lx, 33 + ly * 0.3, 3, 5, CREAM); e(lx + 0.5, 37.2 + ly * 0.2, 3.1, 2.2, POINT)
-    e(31, 26, 6, 6, WHITE)                                     # fluffy chest
-    # head
-    hx, hy = 34, 15
-    poly([(hx - 9, hy - 3), (hx - 7, hy - 14 - ears_up), (hx - 1, hy - 7)], POINT)
-    poly([(hx + 2, hy - 7), (hx + 8, hy - 14 - ears_up), (hx + 10, hy - 2)], POINT)
-    poly([(hx - 7, hy - 5), (hx - 6.3, hy - 11 - ears_up), (hx - 3, hy - 7)], (236, 160, 170, 255))
-    e(hx, hy, 11, 10, CREAM)
-    e(hx + 2, hy + 3.5, 7.5, 5.5, POINT_L); e(hx + 2.5, hy + 4.5, 5.5, 4, POINT)   # seal-point mask
-    for ex in (hx - 3.2, hx + 5.2):
-        e(ex, hy - 0.5, 2.9, 3.2, EYE); e(ex + 0.4, hy - 0.2, 1.1, 2.2, (30, 30, 40, 255)); e(ex - 0.8, hy - 1.6, 0.9, 0.9, WHITE)
-    e(hx + 2.5, hy + 4.2, 1.4, 1.0, (240, 150, 165, 255))
-    if mouth_open: e(hx + 2.5, hy + 7, 1.6, 1.2, (200, 90, 110, 255))
-    # outline: dilate the silhouette and put it behind
-    alpha = im.split()[3].filter(ImageFilter.MaxFilter(2 * CS + 1))
-    outline = Image.new("RGBA", im.size, (80, 56, 48, 255)); outline.putalpha(alpha)
-    out = Image.alpha_composite(outline, im)
-    return out.resize((FW, FH), Image.LANCZOS)
-
-frames = [
-    kitten([(13, 0), (18, -2), (27, -2), (32, 0)]),
-    kitten([(14, -2), (17, 0), (28, 0), (31, -2)], tail_up=0.3),
-    kitten([(13, 0), (18, -2), (27, -2), (32, 0)], tail_up=0.6),
-    kitten([(12, -2), (19, 0), (26, 0), (33, -2)], tail_up=0.3),
-    kitten([(10, -6), (20, -6), (26, -6), (36, -6)], tail_up=1.0, ears_up=2, mouth_open=True),   # falling
-    kitten([(15, 0), (17, 0), (29, 0), (31, 0)], tail_up=-0.2),                                   # sitting / kneading
-]
-sheet = Image.new("RGBA", (FW * len(frames), FH), (0, 0, 0, 0))
-for i, f in enumerate(frames): sheet.paste(f, (i * FW, 0))
-p = os.path.join(OUT, "cat_sheet.bytes"); sheet.save(p, format="PNG")
-sheet.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST).save(os.path.join(os.path.dirname(__file__), "cat_sheet_preview.png"))
-print("cat_sheet", sheet.size)
+def cookie_jar(P, w, h):
+    P.rrect(2, 0, 28, 24, 8, (230, 242, 246, 235), (170, 196, 204, 255), 0.8)
+    for cx, cy in [(9, 6), (19, 7), (14, 13), (8, 17), (20, 16)]:
+        P.ell(cx, cy, 4.5, 4.5, (206, 156, 100, 255)); P.ell(cx - 1, cy + 1, 0.8, 0.8, (110, 70, 50, 255)); P.ell(cx + 1.5, cy - 1, 0.8, 0.8, (110, 70, 50, 255))
+    P.rrect(4, 24, 26, 28, 2, (240, 180, 190, 255)); P.ell(15, 30, 4, 2.5, (240, 180, 190, 255))
+def cereal(P, w, h):
+    P.rect(1, 0, 24, 36, (240, 120, 100, 255)); P.rect(1, 30, 24, 36, (250, 222, 150, 255))
+    P.ell(12.5, 16, 8, 8, (255, 250, 240, 255)); P.ell(12.5, 16, 6, 6, (250, 222, 150, 255))
+    for cx, cy in [(10, 17), (14, 14), (13, 19)]: P.ell(cx, cy, 1.6, 1.6, (220, 150, 70, 255))
+    P.rect(4, 4, 21, 7, (255, 250, 240, 255))
+def pan(P, w, h):
+    P.rect(18, 26, 22, 50, (60, 60, 66, 255)); P.ell(20, 47, 2, 2, (200, 200, 200, 255))
+    P.ell(20, 14, 18, 14, (60, 60, 66, 255)); P.ell(20, 14, 14.5, 11, (88, 88, 96, 255)); P.ell(15, 18, 4, 2.5, (120, 120, 130, 255))
+def sparkle(P, cx, cy, r):
+    P.poly([(cx, cy + r), (cx + r * 0.25, cy + r * 0.25), (cx + r, cy), (cx + r * 0.25, cy - r * 0.25), (cx, cy - r),
+            (cx - r * 0.25, cy - r * 0.25), (cx - r, cy), (cx - r * 0.25, cy + r * 0.25)], (255, 255, 230, 255))
+def yarn(P, w, h):
+    P.ell(8, 7, 7, 7, GOLD)
+    for k in range(-3, 4): P.arc(1 + k, 0, 15 + k, 14, 200, 340, GOLD_D, 0.7)
+    P.line([(13, 3), (16, 1)], GOLD_D, 0.8); sparkle(P, 13, 11, 2.5)
+def mouse(P, w, h):
+    P.ell(8, 5, 6, 4.5, GOLD); P.ell(12.5, 7.5, 2.3, 2.3, GOLD_L); P.ell(13.5, 4.5, 0.7, 0.7, (80, 56, 48, 255))
+    P.ell(15, 4, 0.9, 0.9, (238, 120, 140, 255)); P.line([(2, 4), (0, 6), (1, 9)], GOLD_D, 0.8); sparkle(P, 4, 10, 2.5)
+def fishbone(P, w, h):
+    P.line([(2, 7), (13, 7)], GOLD, 1.4); P.poly([(13, 7), (16, 10), (16, 4)], GOLD)
+    for k in range(4, 12, 2.5 if False else 3): P.line([(k, 4), (k + 1, 7), (k, 10)], GOLD, 1)
+    P.ell(2.5, 7, 2.5, 2.2, GOLD); P.ell(2, 7.5, 0.6, 0.6, (80, 56, 48, 255)); sparkle(P, 12, 12, 2.2)
+def valve(P, w, h):
+    P.rect(0, 2, 24, 6, STEEL_D); P.rect(10, 4, 14, 8, STEEL_D)
+    P.ell(12, 8, 5, 3.5, (220, 70, 70, 255)); P.ell(12, 8, 2, 1.4, (250, 230, 230, 255))
+prop("prop_cookiejar", 30, 32, cookie_jar)
+prop("prop_cereal", 25, 36, cereal)
+prop("prop_pan", 40, 50, pan)
+prop("secret_yarn", 16, 14, yarn)
+prop("secret_mouse", 16, 12, mouse)
+prop("secret_fishbone", 17, 14, fishbone)
+prop("valve", 24, 12, valve)

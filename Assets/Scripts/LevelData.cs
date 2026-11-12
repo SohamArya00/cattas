@@ -12,6 +12,22 @@ namespace Cattas
     //   .  air            #  dirt (can be dug)        X  stone (can't be dug)
     //   /  dirt ramp going up to the right             \  dirt ramp going up to the left
     //   H  hatch (cats drop out of here)               E  exit (put ground under it!)
+    // Something special placed in a level (hazards, switches, props, secrets).
+    // In the level file:   object: <type> x0 y0 x1 y1 [extra...]     (game pixels, y measured UP from the bottom)
+    //   water  x0 y0 x1 y1                    kittens that fall in get soaked (and go home to dry off)
+    //   fire   x0 y0 x1 y1 <group>            singes kittens while lit
+    //   switch x0 y0 x1 y1 <group> [art]      a kitten touching it turns off that group (e.g. the gas)
+    //   prop   x0 y0 x1 y1 <art>              an object a kitten can knock over (secrets can hide behind it)
+    //   secret x0 y0 x1 y1 <art> <Name...>    a hidden collectible
+    public class LevelObject
+    {
+        public string type = "";
+        public RectInt rect;
+        public string group = "";
+        public string art = "";
+        public string title = "";
+    }
+
     public class LevelData
     {
         public const int CellSize = 8;
@@ -31,13 +47,17 @@ namespace Cattas
         public string background = "";
         public string foreground = "";
         public bool showMarkers = true; // draw the plain hatch/exit boxes (turn off when the art has its own)
+        public int parSeconds;          // optional "finish in under" target time
+        public readonly List<LevelObject> objects = new List<LevelObject>();
         public readonly int[] traits = new int[CatTraits.Count];
         public readonly List<string> rows = new List<string>();
 
         public int Cols { get; private set; }
         public int Rows { get; private set; }
-        public int PixelWidth => Cols * CellSize;
-        public int PixelHeight => Rows * CellSize;
+        // Level size in game pixels: from the map, unless "size: <width> <height>" is given (handy for painted levels)
+        public int sizeW, sizeH;
+        public int PixelWidth => sizeW > 0 ? sizeW : Cols * CellSize;
+        public int PixelHeight => sizeH > 0 ? sizeH : Rows * CellSize;
 
         public static LevelData Load(int number) => Load($"level{number:00}");
 
@@ -86,6 +106,12 @@ namespace Cattas
                     case "time": int.TryParse(val, out d.timeSeconds); break;
                     case "rate": float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out d.rate); break;
                     case "speed": int.TryParse(val, out d.speed); break;
+                    case "par": int.TryParse(val, out d.parSeconds); break;
+                    case "size":
+                        var wh = val.Split(new[] { ' ', 'x', 'X', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (wh.Length == 2) { int.TryParse(wh[0], out d.sizeW); int.TryParse(wh[1], out d.sizeH); }
+                        break;
+                    case "object": ParseObject(d, val); break;
                     case "background": d.background = val; break;
                     case "foreground": d.foreground = val; break;
                     case "markers": d.showMarkers = !(val.ToLowerInvariant() == "off" || val.ToLowerInvariant() == "hidden" || val.ToLowerInvariant() == "no"); break;
@@ -100,6 +126,34 @@ namespace Cattas
             foreach (var r in d.rows) cols = Mathf.Max(cols, r.Length);
             d.Cols = cols;
             return d;
+        }
+
+        static void ParseObject(LevelData d, string val)
+        {
+            var parts = val.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 5) return;
+            var o = new LevelObject { type = parts[0].ToLowerInvariant() };
+            if (!int.TryParse(parts[1], out int x0) || !int.TryParse(parts[2], out int y0) ||
+                !int.TryParse(parts[3], out int x1) || !int.TryParse(parts[4], out int y1)) return;
+            o.rect = new RectInt(Mathf.Min(x0, x1), Mathf.Min(y0, y1), Mathf.Abs(x1 - x0), Mathf.Abs(y1 - y0));
+            switch (o.type)
+            {
+                case "fire":
+                    if (parts.Length > 5) o.group = parts[5];
+                    break;
+                case "switch":
+                    if (parts.Length > 5) o.group = parts[5];
+                    if (parts.Length > 6) o.art = parts[6];
+                    break;
+                case "prop":
+                    if (parts.Length > 5) o.art = parts[5];
+                    break;
+                case "secret":
+                    if (parts.Length > 5) o.art = parts[5];
+                    o.title = parts.Length > 6 ? string.Join(" ", parts, 6, parts.Length - 6) : "a secret";
+                    break;
+            }
+            d.objects.Add(o);
         }
 
         // e.g. "LitterLord=3, Fluffchute=2"

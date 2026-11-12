@@ -32,6 +32,7 @@ namespace Cattas
 
         public CatState State { get; private set; }
         public int X => x;
+        public int Dir => dir;
         public int Y => y;
 
         int x, y;            // feet position in level pixels
@@ -130,7 +131,8 @@ namespace Cattas
             UpdateVisual();
         }
 
-        bool IsActive => State == CatState.Walking || State == CatState.Falling
+        // Still in play (not home, lost or splatted)
+        public bool IsActive => State == CatState.Walking || State == CatState.Falling
                       || State == CatState.Digging || State == CatState.Blocking
                       || State == CatState.Zooming || State == CatState.Climbing
                       || State == CatState.Building || State == CatState.Scratching;
@@ -300,6 +302,17 @@ namespace Cattas
                 x = wallX;
                 State = CatState.Walking;
             }
+        }
+
+        // Hit by a hazard (water, fire): the kitten goes home grumpy to dry off / cool down - not saved.
+        public void Hazard(FxKind kind)
+        {
+            if (!IsActive) return;
+            game.Fx(kind, x, y);
+            game.SpawnSadCat(x, y, sr.sprite, baseTint, kind);
+            State = CatState.Lost;
+            game.OnCatLost(this);
+            Destroy(gameObject);
         }
 
         // Scratcher: claw a sloping tunnel diagonally down and forwards (one across, one down).

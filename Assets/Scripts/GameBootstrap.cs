@@ -3,12 +3,12 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum FxKind { Dig, Smash, Hairball, Zap, Splat, Puff, Home }
+    public enum FxKind { Dig, Smash, Hairball, Zap, Splat, Puff, Home, Soak, Burn, Knock, Secret, Switch }
 
     // The "brain" of the game. It starts itself automatically when you press Play,
     // so there is nothing to set up in the Unity editor.
     //
-    // Flow: Menu (level select) -> Playing a level -> Results -> back to Menu or next level.
+    // Flow: Menu -> Preview (look around the level) -> Playing -> Results -> Menu / next level.
     public class GameBootstrap : MonoBehaviour
     {
         public const int TicksPerSecond = 30; // game logic runs at a steady 30 steps a second
@@ -16,7 +16,7 @@ namespace Cattas
         // How far we are between one game step and the next (0..1) - used to make movement smooth.
         public static float TickAlpha { get; private set; }
 
-        enum GameMode { Menu, Playing, Results }
+        enum GameMode { Menu, Preview, Playing, Results }
         GameMode mode = GameMode.Menu;
 
         Camera cam;
@@ -24,35 +24,39 @@ namespace Cattas
         DiggableGround ground;
         Sprite catSprite;
         Sprite[] catFrames;          // painted kitten animation (if the art exists)
-        Sprite particleSprite;
+        Sprite particleSprite, flashSprite;
         Texture2D menuBackdrop;
         bool hasKitchenDemo;
-        Texture2D levelBackground;   // freed when the level is cleared
+        readonly List<Texture2D> levelTextures = new List<Texture2D>(); // freed when the level is cleared
+        Texture2D levelBackground;
+
         readonly List<Cat> cats = new List<Cat>();
         readonly List<Vector2Int> spawnPoints = new List<Vector2Int>();
         readonly List<RectInt> exitZones = new List<RectInt>();
 
         // Current level
         int levelNumber;             // 0 = a special level (like the Kitchen demo)
-        string levelFile;
+        string levelFile = "";
         int levelCount;
         LevelData level;
         int levelWidth = 640, levelHeight = 360;
         readonly int[] traitsLeft = new int[CatTraits.Count];
         CatTrait selectedTrait = CatTrait.LitterLord;
 
-        int released, saved, lost, ticksUntilNextCat, ticksLeft;
+        int released, saved, lost, ticksUntilNextCat, ticksLeft, elapsedTicks;
         bool timeUp;
+        float tickTimer;
 
         // Game speed in %: 50 = normal, 100 = double speed.
         // Players can only speed up from the level's starting speed (slower than normal will be an NG+ unlock).
         float speedPercent = 50f;
         int minSpeedPercent = 50;
-        float tickTimer;
 
         // Saved progress (stays between play sessions)
         const string UnlockedKey = "cattas_unlocked";
         static string BestKey(int n) => $"cattas_best_{n}";
+        static string GoalsKey(string file) => $"cattas_goals_{file}";
+        static string SecretKey(string file, string title) => $"cattas_secret_{file}_{title}";
 
         static readonly Color[] CatColours =
         {
@@ -113,6 +117,7 @@ namespace Cattas
             // Painted kitten: 48x40 frames at 4x detail. Drawn slightly bigger than its 12x10 "body" so it reads well.
             catFrames = Art.SliceSheet(Art.Load("cat_sheet"), 48, 4f / 1.25f, new Vector2(0.5f, 0.02f));
             particleSprite = SpriteMaker.Solid(1, 1, new Color32(255, 255, 255, 255), new Vector2(0.5f, 0.5f));
+            flashSprite = SpriteMaker.Circle(14, new Color32(255, 240, 120, 255));
             menuBackdrop = Art.Load("kitchen_bg");
             Sfx.Init(gameObject);
             levelCount = LevelData.CountLevels();
@@ -131,8 +136,9 @@ namespace Cattas
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.55f, 0.76f, 0.95f); // sky blue
-            cam.transform.position = new Vector3(320f, 180f, -10f);
-            cam.orthographicSize = 180f;
+            camPos = new Vector2(320f, 180f);
+            viewH = 360f;
+            ApplyCamera();
         }
 
         // ---------- Progress ----------
@@ -141,12 +147,36 @@ namespace Cattas
         void RecordResult()
         {
             Sfx.Play(saved >= level.need ? "win" : "lose", 1f, 0f);
-            if (levelNumber <= 0) return; // special levels don't affect progress
-            if (saved > PlayerPrefs.GetInt(BestKey(levelNumber), -1))
-                PlayerPrefs.SetInt(BestKey(levelNumber), saved);
-            if (saved >= level.need && levelNumber + 1 > Unlocked)
-                PlayerPrefs.SetInt(UnlockedKey, levelNumber + 1);
+            int mask = 0;
+            var goals = Goals();
+            for (int i = 0; i < goals.Count; i++) if (goals[i].done) mask |= 1 << i;
+            PlayerPrefs.SetInt(GoalsKey(levelFile), PlayerPrefs.GetInt(GoalsKey(levelFile), 0) | mask);
+
+            if (levelNumber > 0)
+            {
+                if (saved > PlayerPrefs.GetInt(BestKey(levelNumber), -1))
+                    PlayerPrefs.SetInt(BestKey(levelNumber), saved);
+                if (saved >= level.need && levelNumber + 1 > Unlocked)
+                    PlayerPrefs.SetInt(UnlockedKey, levelNumber + 1);
+            }
             PlayerPrefs.Save();
+        }
+
+        // ---------- Objectives ----------
+        struct Goal { public string text; public bool done; }
+
+        List<Goal> Goals()
+        {
+            var list = new List<Goal>();
+            bool won = saved >= level.need;
+            list.Add(new Goal { text = $"Get {level.need} kittens home", done = won });
+            list.Add(new Goal { text = $"Save every kitten ({level.cats})", done = saved == level.cats });
+            if (level.parSeconds > 0)
+                list.Add(new Goal { text = $"Finish in under {level.parSeconds / 60}:{level.parSeconds % 60:00}",
+                                    done = won && elapsedTicks <= level.parSeconds * TicksPerSecond });
+            if (secretsTotal > 0)
+                list.Add(new Goal { text = $"Find all {secretsTotal} secrets", done = secretsFound == secretsTotal });
+            return list;
         }
 
         // ---------- Building a level from its file ----------
@@ -164,25 +194,30 @@ namespace Cattas
             levelNumber = number;
             levelFile = file;
             level = data;
-            BuildLevel();
-            mode = GameMode.Playing;
+            BuildLevel(true);
         }
 
         void ClearLevel()
         {
-            if (levelBackground != null) Destroy(levelBackground);
+            foreach (var t in levelTextures) if (t != null) Destroy(t);
+            levelTextures.Clear();
             levelBackground = null;
             if (levelRoot != null) Destroy(levelRoot.gameObject);
             levelRoot = null;
+            ground = null;
             cats.Clear();
+            things.Clear();
+            popups.Clear();
         }
 
-        void BuildLevel()
+        // preview = start zoomed out so the player can look around first
+        void BuildLevel(bool preview)
         {
             ClearLevel();
             spawnPoints.Clear();
             exitZones.Clear();
-            released = saved = lost = 0;
+            released = saved = lost = elapsedTicks = 0;
+            secretsFound = secretsTotal = 0;
             timeUp = false;
             ticksUntilNextCat = TicksPerSecond; // first cat after 1 second
             ticksLeft = level.timeSeconds * TicksPerSecond;
@@ -194,13 +229,12 @@ namespace Cattas
             levelWidth = level.PixelWidth;
             levelHeight = level.PixelHeight;
 
-            levelRoot = new GameObject("Level " + levelNumber).transform;
+            levelRoot = new GameObject("Level " + levelFile).transform;
             levelRoot.SetParent(transform, false);
 
             // Painted art (optional)
             Texture2D fgArt = Art.Load(level.foreground);
             Texture2D bgArt = Art.Load(level.background);
-            levelBackground = bgArt;
             bool painted = fgArt != null;
             int artScale = painted ? Mathf.Max(1, Mathf.RoundToInt(fgArt.width / (float)levelWidth)) : 1;
             // Painted levels sit on a cosy dark frame; plain levels get the sky
@@ -208,6 +242,8 @@ namespace Cattas
 
             if (bgArt != null)
             {
+                levelTextures.Add(bgArt);
+                levelBackground = bgArt;
                 var bgObj = new GameObject("Background");
                 bgObj.transform.SetParent(levelRoot, false);
                 var bsr = bgObj.AddComponent<SpriteRenderer>();
@@ -255,7 +291,24 @@ namespace Cattas
 
             if (spawnPoints.Count == 0) AddHatch(levelWidth / 4, levelHeight - 40);
 
-            SetupCameraForLevel();
+            BuildThings();
+
+            // Camera: preview starts zoomed right out; otherwise jump straight to the hatch
+            camFlying = false;
+            if (preview)
+            {
+                viewH = MaxView;
+                camPos = new Vector2(levelWidth / 2f, levelHeight / 2f);
+                mode = GameMode.Preview;
+            }
+            else
+            {
+                viewH = PlayView;
+                camPos = HatchView(viewH);
+                mode = GameMode.Playing;
+            }
+            ClampCam();
+            ApplyCamera();
         }
 
         void AddHatch(int centreX, int bottomY)
@@ -274,7 +327,7 @@ namespace Cattas
             exitZones.Add(new RectInt(centreX - 4, floorY, 9, 10));
         }
 
-        void MakeBox(string name, Vector2Int pos, int w, int h, Color32 colour, int order)
+        GameObject MakeBox(string name, Vector2Int pos, int w, int h, Color32 colour, int order)
         {
             var go = new GameObject(name);
             go.transform.SetParent(levelRoot, false);
@@ -283,6 +336,7 @@ namespace Cattas
             sr.sprite = SpriteMaker.Solid(w, h, colour, Vector2.zero);
             sr.material = SpriteMaterial;
             sr.sortingOrder = order;
+            return go;
         }
 
         CatTrait FirstAvailableTrait()
@@ -292,57 +346,330 @@ namespace Cattas
             return CatTrait.LitterLord;
         }
 
-        // ---------- Camera ----------
-        // The whole level height fits on screen, with a little room at the bottom for the trait bar.
-        // Wider levels scroll left/right.
-        void SetupCameraForLevel()
+        // ---------- Level objects: water, fire, switches, props, secrets ----------
+        class Thing
         {
-            float viewHeight = levelHeight * 1.12f;
-            cam.orthographicSize = viewHeight / 2f;
-            float camY = levelHeight * 1.02f - viewHeight / 2f;
-            baseCamY = camY;
-            float startX = spawnPoints.Count > 0 ? spawnPoints[0].x : levelWidth / 2f;
-            cam.transform.position = new Vector3(startX, camY, -10f);
-            ClampCamera();
+            public LevelObject data;
+            public bool on = true;          // fire lit / switch unused / prop standing / secret uncollected
+            public GameObject go;
+            public SpriteRenderer sr;
+            public float timer;
         }
 
-        void ClampCamera()
+        readonly List<Thing> things = new List<Thing>();
+        int secretsFound, secretsTotal;
+
+        void BuildThings()
         {
-            float halfW = cam.orthographicSize * cam.aspect;
-            var p = cam.transform.position;
+            foreach (var o in level.objects)
+            {
+                var t = new Thing { data = o };
+                var r = o.rect;
+                switch (o.type)
+                {
+                    case "water":
+                        t.go = MakeBox("Water", new Vector2Int(r.x, r.y), Mathf.Max(1, r.width), Mathf.Max(1, r.height),
+                                       new Color32(120, 180, 235, 150), 6);
+                        var surface = MakeBox("Water surface", new Vector2Int(r.x, r.yMax - 2), Mathf.Max(1, r.width), 2,
+                                              new Color32(220, 240, 255, 200), 6);
+                        surface.transform.SetParent(t.go.transform, true);
+                        break;
+                    case "fire":
+                        t.go = MakeBox("Fire glow", new Vector2Int(r.x - 2, r.y), r.width + 4, Mathf.Max(2, r.height / 2),
+                                       new Color32(255, 150, 60, 70), 4);
+                        break;
+                    case "switch":
+                    case "prop":
+                    case "secret":
+                        t.go = MakeArtThing(o, o.type == "prop" ? 7 : o.type == "switch" ? 4 : 3);
+                        if (o.type == "secret")
+                        {
+                            secretsTotal++;
+                            // already found on an earlier play? show it slightly faded (it can still be collected)
+                            if (t.go != null && PlayerPrefs.GetInt(SecretKey(levelFile, o.title), 0) == 1)
+                                t.go.GetComponent<SpriteRenderer>().color = new Color(1f, 1f, 1f, 0.6f);
+                        }
+                        break;
+                }
+                if (t.go != null) t.sr = t.go.GetComponent<SpriteRenderer>();
+                things.Add(t);
+            }
+        }
+
+        GameObject MakeArtThing(LevelObject o, int order)
+        {
+            var tex = Art.Load(o.art);
+            var r = o.rect;
+            var go = new GameObject(o.type + " " + o.art);
+            go.transform.SetParent(levelRoot, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.material = SpriteMaterial;
+            sr.sortingOrder = order;
+            if (tex != null)
+            {
+                levelTextures.Add(tex);
+                // centre the picture on the object's rectangle, scaled to its width
+                float ppu = tex.width / Mathf.Max(1f, r.width);
+                sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0f), ppu);
+                go.transform.localPosition = new Vector3(r.x + r.width / 2f, r.y, 0f);
+            }
+            else
+            {
+                sr.sprite = SpriteMaker.Solid(Mathf.Max(1, r.width), Mathf.Max(1, r.height), new Color32(255, 220, 90, 255), new Vector2(0.5f, 0f));
+                go.transform.localPosition = new Vector3(r.x + r.width / 2f, r.y, 0f);
+            }
+            return go;
+        }
+
+        static bool FeetIn(RectInt r, int x, int y) => x >= r.xMin && x < r.xMax && y >= r.yMin && y < r.yMax;
+        static bool BodyTouches(RectInt r, int x, int y) => x >= r.xMin - 2 && x < r.xMax + 2 && y < r.yMax && y + 11 > r.yMin;
+
+        bool IsCovered(Thing secret)
+        {
+            foreach (var t in things)
+                if (t.data.type == "prop" && t.on && t.data.rect.Overlaps(secret.data.rect)) return true;
+            return false;
+        }
+
+        // Called every game step: see what the kittens are touching.
+        void CheckThings()
+        {
+            if (things.Count == 0) return;
+            var snapshot = new List<Cat>(cats);
+            foreach (var cat in snapshot)
+            {
+                if (!cat.IsActive) continue;
+                int x = cat.X, y = cat.Y;
+                foreach (var t in things)
+                {
+                    if (!cat.IsActive) break;
+                    var r = t.data.rect;
+                    switch (t.data.type)
+                    {
+                        case "water":
+                            if (FeetIn(r, x, y)) cat.Hazard(FxKind.Soak);
+                            break;
+                        case "fire":
+                            if (t.on && FeetIn(r, x, y)) cat.Hazard(FxKind.Burn);
+                            break;
+                        case "switch":
+                            if (t.on && BodyTouches(r, x, y)) FlipSwitch(t);
+                            break;
+                        case "prop":
+                            if (t.on && BodyTouches(r, x, y)) KnockOver(t, cat.Dir);
+                            break;
+                        case "secret":
+                            if (t.on && !IsCovered(t) && BodyTouches(r, x, y)) Collect(t);
+                            break;
+                    }
+                }
+            }
+        }
+
+        void FlipSwitch(Thing t)
+        {
+            t.on = false;
+            if (t.go != null) t.go.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            int turnedOff = 0;
+            foreach (var f in things)
+                if (f.data.type == "fire" && f.data.group == t.data.group && f.on)
+                {
+                    f.on = false;
+                    turnedOff++;
+                    if (f.go != null) f.go.SetActive(false);
+                    var c = f.data.rect.center;
+                    Burst(c.x, c.y, new Color(0.85f, 0.85f, 0.85f, 0.8f), 10, 25f, 30f, 2.5f, 1f, 30f);
+                }
+            Fx(FxKind.Switch, t.data.rect.x, t.data.rect.y);
+            string what = string.IsNullOrEmpty(t.data.group) ? "Switch" : char.ToUpper(t.data.group[0]) + t.data.group.Substring(1);
+            Popup(turnedOff > 0 ? $"{what} turned off!" : $"Click!");
+        }
+
+        void KnockOver(Thing t, int dir)
+        {
+            t.on = false;
+            Fx(FxKind.Knock, (int)t.data.rect.center.x, t.data.rect.y + 4);
+            if (t.go == null) return;
+            var p = t.go.AddComponent<Particle>();
+            p.velocity = new Vector2(dir * 45f, 70f);
+            p.gravity = -380f;
+            p.life = 1.6f;
+            p.spin = -dir * 260f;
+        }
+
+        void Collect(Thing t)
+        {
+            t.on = false;
+            secretsFound++;
+            var c = t.data.rect.center;
+            Fx(FxKind.Secret, (int)c.x, (int)c.y);
+            if (t.go != null)
+            {
+                var p = t.go.AddComponent<FadeAway>();
+                p.life = 0.8f;
+                p.rise = 30f;
+                p.grow = 1f;
+            }
+            PlayerPrefs.SetInt(SecretKey(levelFile, t.data.title), 1);
+            PlayerPrefs.Save();
+            Popup($"Secret found: {t.data.title}!  ({secretsFound}/{secretsTotal})");
+        }
+
+        // Every frame: flames flicker, water bobs, secrets twinkle.
+        void AnimateThings()
+        {
+            foreach (var t in things)
+            {
+                var r = t.data.rect;
+                switch (t.data.type)
+                {
+                    case "fire":
+                        if (!t.on) break;
+                        t.timer += Time.deltaTime * Mathf.Max(8f, r.width * 1.6f);
+                        while (t.timer > 1f)
+                        {
+                            t.timer -= 1f;
+                            var col = Color.Lerp(new Color(1f, 0.85f, 0.3f), new Color(1f, 0.35f, 0.1f), Random.value);
+                            SpawnParticle(new Vector2(Random.Range(r.xMin, r.xMax), r.yMin + Random.Range(0f, 3f)),
+                                          new Vector2(Random.Range(-6f, 6f), Random.Range(20f, 45f)), col, Random.Range(1.5f, 3.2f), Random.Range(0.25f, 0.5f), 40f, 9);
+                        }
+                        if (t.sr != null) t.sr.color = new Color(1f, 0.6f, 0.25f, 0.2f + 0.1f * Mathf.Sin(Time.time * 17f));
+                        break;
+                    case "water":
+                        if (t.go != null) t.go.transform.localPosition = new Vector3(r.x, r.y + Mathf.Sin(Time.time * 2.5f) * 0.6f, 0f);
+                        break;
+                    case "secret":
+                        if (!t.on || IsCovered(t)) break;
+                        t.timer += Time.deltaTime;
+                        if (t.timer > 0.35f)
+                        {
+                            t.timer = 0f;
+                            SpawnParticle(new Vector2(Random.Range(r.xMin, r.xMax), Random.Range(r.yMin, r.yMax)),
+                                          new Vector2(0f, 8f), new Color(1f, 0.95f, 0.5f), 1.2f, 0.6f, 0f, 9);
+                        }
+                        break;
+                }
+            }
+        }
+
+        // ---------- Popup messages ----------
+        struct PopupMsg { public string text; public float time; }
+        readonly List<PopupMsg> popups = new List<PopupMsg>();
+        void Popup(string text) => popups.Add(new PopupMsg { text = text, time = Time.unscaledTime });
+
+        // ---------- Camera ----------
+        Vector2 camPos;           // what the camera is looking at (centre), in level pixels
+        float viewH = 360f;       // how much of the level is visible, top to bottom
+        bool camFlying;           // swooping in after the preview
+        Vector2 flyTarget;
+        Vector2 shakeOffset;
+        float shakeTime, shakeAmount;
+        const float BottomUI = 0.13f; // part of the screen covered by the trait bar
+
+        float MinView => 140f;
+        float MaxView => Mathf.Max(levelHeight / (1f - BottomUI) * 1.02f, levelWidth / cam.aspect);
+        float PlayView => levelHeight <= 400 ? MaxView : Mathf.Min(MaxView, 250f);
+
+        // Where the camera looks when play starts: the hatch, a little ahead of it
+        Vector2 HatchView(float vh)
+        {
+            var h = spawnPoints.Count > 0 ? spawnPoints[0] : new Vector2Int(levelWidth / 2, levelHeight / 2);
+            return ClampPos(new Vector2(h.x + vh * 0.4f, h.y - vh * 0.15f), vh);
+        }
+
+        void ClampCam()
+        {
+            viewH = Mathf.Clamp(viewH, MinView, Mathf.Max(MinView, MaxView));
+            camPos = ClampPos(camPos, viewH);
+        }
+
+        // Keep the view inside the level (with room at the bottom for the trait bar)
+        Vector2 ClampPos(Vector2 p, float vh)
+        {
+            float halfH = vh / 2f, halfW = halfH * cam.aspect;
             if (levelWidth <= halfW * 2f) p.x = levelWidth / 2f;
             else p.x = Mathf.Clamp(p.x, halfW, levelWidth - halfW);
-            cam.transform.position = p;
+            float minY = halfH - vh * BottomUI;
+            float maxY = levelHeight + vh * 0.02f - halfH;
+            p.y = minY > maxY ? (minY + maxY) / 2f : Mathf.Clamp(p.y, minY, maxY);
+            return p;
         }
 
-        float baseCamY;
-
-        float KeyboardScroll()
+        void ApplyCamera()
         {
-            float v = 0f;
+            if (cam == null) return;
+            cam.orthographicSize = viewH / 2f;
+            cam.transform.position = new Vector3(camPos.x + shakeOffset.x, camPos.y + shakeOffset.y, -10f);
+        }
+
+        void ZoomAt(float factor, Vector2 screenPoint)
+        {
+            Vector3 before = cam.ScreenToWorldPoint(new Vector3(screenPoint.x, screenPoint.y, 0f));
+            viewH *= factor;
+            ClampCam();
+            ApplyCamera();
+            Vector3 after = cam.ScreenToWorldPoint(new Vector3(screenPoint.x, screenPoint.y, 0f));
+            camPos += new Vector2(before.x - after.x, before.y - after.y);
+            ClampCam();
+            ApplyCamera();
+            camFlying = false;
+        }
+
+        void StartPlaying()
+        {
+            mode = GameMode.Playing;
+            camFlying = true;
+            flyTarget = HatchView(PlayView);
+        }
+
+        // Keyboard: arrows / WASD to scroll, + and - to zoom
+        void KeyboardCamera()
+        {
+            float h = 0f, v = 0f, z = 0f;
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb == null) return 0f;
-            if (kb.leftArrowKey.isPressed || kb.aKey.isPressed) v -= 1f;
-            if (kb.rightArrowKey.isPressed || kb.dKey.isPressed) v += 1f;
+            if (kb == null) return;
+            if (kb.leftArrowKey.isPressed || kb.aKey.isPressed) h -= 1f;
+            if (kb.rightArrowKey.isPressed || kb.dKey.isPressed) h += 1f;
+            if (kb.upArrowKey.isPressed || kb.wKey.isPressed) v += 1f;
+            if (kb.downArrowKey.isPressed || kb.sKey.isPressed) v -= 1f;
+            if (kb.equalsKey.isPressed || kb.numpadPlusKey.isPressed) z -= 1f;
+            if (kb.minusKey.isPressed || kb.numpadMinusKey.isPressed) z += 1f;
 #else
-            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) v -= 1f;
-            if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) v += 1f;
+            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) h -= 1f;
+            if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) h += 1f;
+            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W)) v += 1f;
+            if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S)) v -= 1f;
+            if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus)) z -= 1f;
+            if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus)) z += 1f;
 #endif
-            return v;
+            if (h != 0f || v != 0f)
+            {
+                camPos += new Vector2(h, v) * viewH * 1.1f * Time.unscaledDeltaTime;
+                camFlying = false;
+                ClampCam();
+            }
+            if (z != 0f)
+                ZoomAt(1f + z * 1.5f * Time.unscaledDeltaTime, new Vector2(Screen.width / 2f, Screen.height / 2f));
         }
 
         // ---------- Game loop ----------
         void Update()
         {
-            if (mode != GameMode.Playing) return;
+            if (mode == GameMode.Menu || levelRoot == null) return;
 
-            float scroll = KeyboardScroll();
-            if (scroll != 0f)
+            KeyboardCamera();
+            if (camFlying)
             {
-                cam.transform.position += Vector3.right * scroll * cam.orthographicSize * 1.5f * Time.unscaledDeltaTime;
-                ClampCamera();
+                float k = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
+                viewH = Mathf.Lerp(viewH, PlayView, k);
+                camPos = Vector2.Lerp(camPos, flyTarget, k);
+                ClampCam();
+                if (Mathf.Abs(viewH - PlayView) < 0.5f && (camPos - flyTarget).sqrMagnitude < 1f) camFlying = false;
             }
+            AnimateThings();
+
+            if (mode != GameMode.Playing) { TickAlpha = 1f; return; }
 
             tickTimer += Time.deltaTime * (speedPercent / 50f);
             float tickLength = 1f / TicksPerSecond;
@@ -356,6 +683,18 @@ namespace Cattas
             TickAlpha = Mathf.Clamp01(tickTimer / tickLength);
         }
 
+        void LateUpdate()
+        {
+            if (cam == null) return;
+            if (shakeTime > 0f)
+            {
+                shakeTime -= Time.deltaTime;
+                shakeOffset = Random.insideUnitCircle * shakeAmount;
+            }
+            else shakeOffset = Vector2.zero;
+            if (mode != GameMode.Menu) ApplyCamera();
+        }
+
         void GameTick()
         {
             if (released < level.cats && --ticksUntilNextCat <= 0)
@@ -364,8 +703,10 @@ namespace Cattas
                 ticksUntilNextCat = Mathf.Max(1, Mathf.RoundToInt(level.rate * TicksPerSecond));
             }
             for (int i = cats.Count - 1; i >= 0; i--)
-                cats[i].Tick();
+                if (i < cats.Count) cats[i].Tick();
+            CheckThings();
 
+            elapsedTicks++;
             if (--ticksLeft <= 0) timeUp = true;
 
             if (IsFinished)
@@ -451,51 +792,59 @@ namespace Cattas
                     Burst(x, y + 6, new Color(1f, 0.92f, 0.45f), 6, 40f, 60f, 1.0f, 0.8f, -40f);
                     Sfx.Play("home", 0.8f, 0.06f);
                     break;
+                case FxKind.Soak:
+                    Burst(x, y + 2, new Color(0.6f, 0.82f, 1f, 0.9f), 14, 45f, 90f, 1.4f, 0.7f, -300f);
+                    Sfx.Play("splash", 0.9f, 0.05f);
+                    break;
+                case FxKind.Burn:
+                    Burst(x, y + 4, new Color(1f, 0.6f, 0.2f), 10, 40f, 70f, 1.4f, 0.5f, -100f);
+                    Burst(x, y + 6, new Color(0.45f, 0.42f, 0.4f, 0.8f), 10, 15f, 40f, 3f, 1.2f, 20f);
+                    Sfx.Play("sizzle", 0.9f, 0.05f);
+                    break;
+                case FxKind.Knock:
+                    Burst(x, y, new Color(0.85f, 0.65f, 0.45f), 8, 50f, 40f, 1.4f, 0.7f, -250f);
+                    Sfx.Play("clatter", 0.9f, 0.05f);
+                    break;
+                case FxKind.Secret:
+                    Burst(x, y, new Color(1f, 0.9f, 0.35f), 24, 70f, 70f, 1.6f, 1.2f, -30f);
+                    Burst(x, y, Color.white, 10, 40f, 50f, 1f, 1f, -10f);
+                    Sfx.Play("secret", 1f, 0f);
+                    break;
+                case FxKind.Switch:
+                    Sfx.Play("clunk", 1f, 0f);
+                    break;
             }
         }
 
         // Spray some particles out from a point.
         void Burst(float x, float y, Color colour, int count, float spread, float up, float size, float life, float gravity)
         {
-            if (levelRoot == null || Particle.Alive > 500) return;
             for (int i = 0; i < count; i++)
-            {
-                var go = new GameObject("p");
-                go.transform.SetParent(levelRoot, false);
-                go.transform.localPosition = new Vector3(x + Random.Range(-2f, 2f), y + Random.Range(-1f, 2f), 0f);
-                float s = size * Random.Range(0.6f, 1.3f);
-                go.transform.localScale = new Vector3(s, s, 1f);
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = particleSprite;
-                sr.material = SpriteMaterial;
-                sr.color = colour * Random.Range(0.85f, 1.1f);
-                sr.sortingOrder = 8;
-                var p = go.AddComponent<Particle>();
-                p.velocity = new Vector2(Random.Range(-spread, spread), Random.Range(up * 0.4f, up * 1.2f));
-                p.life = life * Random.Range(0.7f, 1.2f);
-                p.gravity = gravity;
-                p.spin = Random.Range(-360f, 360f);
-            }
+                SpawnParticle(new Vector2(x + Random.Range(-2f, 2f), y + Random.Range(-1f, 2f)),
+                              new Vector2(Random.Range(-spread, spread), Random.Range(up * 0.4f, up * 1.2f)),
+                              colour * Random.Range(0.85f, 1.1f), size * Random.Range(0.6f, 1.3f), life * Random.Range(0.7f, 1.2f), gravity, 8);
         }
 
-        float shakeTime, shakeAmount;
-        void Shake(float time, float amount) { shakeTime = time; shakeAmount = amount; }
-
-        void LateUpdate()
+        void SpawnParticle(Vector2 pos, Vector2 velocity, Color colour, float size, float life, float gravity, int order)
         {
-            if (cam == null) return;
-            if (shakeTime > 0f && mode == GameMode.Playing)
-            {
-                shakeTime -= Time.deltaTime;
-                var p = cam.transform.position;
-                cam.transform.position = new Vector3(p.x, baseCamY + Random.Range(-shakeAmount, shakeAmount), p.z);
-            }
-            else if (levelRoot != null)
-            {
-                var p = cam.transform.position;
-                cam.transform.position = new Vector3(p.x, baseCamY, p.z);
-            }
+            if (levelRoot == null || Particle.Alive > 600) return;
+            var go = new GameObject("p");
+            go.transform.SetParent(levelRoot, false);
+            go.transform.localPosition = new Vector3(pos.x, pos.y, 0f);
+            go.transform.localScale = new Vector3(size, size, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = particleSprite;
+            sr.material = SpriteMaterial;
+            sr.color = colour;
+            sr.sortingOrder = order;
+            var p = go.AddComponent<Particle>();
+            p.velocity = velocity;
+            p.life = life;
+            p.gravity = gravity;
+            p.spin = Random.Range(-360f, 360f);
         }
+
+        void Shake(float time, float amount) { shakeTime = time; shakeAmount = amount; }
 
         // ZAP! A bright flash, and a frizzy cat that shoots off home to recover.
         public void SpawnZap(int x, int y, Sprite sprite, Color tint)
@@ -504,25 +853,37 @@ namespace Cattas
             flash.transform.SetParent(levelRoot, false);
             flash.transform.localPosition = new Vector3(x + 0.5f, y + 5f, 0f);
             var fsr = flash.AddComponent<SpriteRenderer>();
-            fsr.sprite = SpriteMaker.Circle(14, new Color32(255, 240, 120, 255));
+            fsr.sprite = flashSprite;
             fsr.material = SpriteMaterial;
             fsr.sortingOrder = 10;
             var ffade = flash.AddComponent<FadeAway>();
             ffade.life = 0.3f;
             ffade.grow = 0.6f;
+            SpawnGhostCat(x, y, sprite, tint * 0.45f + new Color(0f, 0f, 0f, 0.55f), 1.5f, 60f, 1.2f);
+        }
 
-            var frizz = new GameObject("Frizzy Cat");
-            frizz.transform.SetParent(levelRoot, false);
-            frizz.transform.localPosition = new Vector3(x + 0.5f, y, 0f);
-            frizz.transform.localScale = new Vector3(1.5f, 1.5f, 1f);
-            var csr = frizz.AddComponent<SpriteRenderer>();
-            csr.sprite = sprite;
-            csr.color = tint * 0.45f + new Color(0f, 0f, 0f, 0.55f);
-            csr.material = SpriteMaterial;
-            csr.sortingOrder = 11;
-            var cfade = frizz.AddComponent<FadeAway>();
-            cfade.life = 1.2f;
-            cfade.rise = 60f;
+        // A soaked or singed kitten heading home to recover.
+        public void SpawnSadCat(int x, int y, Sprite sprite, Color tint, FxKind kind)
+        {
+            if (kind == FxKind.Soak) SpawnGhostCat(x, y, sprite, new Color(0.6f, 0.75f, 1f, 1f), 0.9f, 25f, 1.6f);
+            else SpawnGhostCat(x, y, sprite, new Color(0.35f, 0.3f, 0.3f, 1f), 1.3f, 70f, 1.2f);
+        }
+
+        void SpawnGhostCat(int x, int y, Sprite sprite, Color colour, float scale, float rise, float life)
+        {
+            if (levelRoot == null) return;
+            var go = new GameObject("Leaving Cat");
+            go.transform.SetParent(levelRoot, false);
+            go.transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+            go.transform.localScale = new Vector3(scale, scale, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.color = colour;
+            sr.material = SpriteMaterial;
+            sr.sortingOrder = 11;
+            var fade = go.AddComponent<FadeAway>();
+            fade.life = life;
+            fade.rise = rise;
         }
 
         // Is there a Biscuit Baker just in front of this walking cat?
@@ -543,13 +904,15 @@ namespace Cattas
         {
             var screen = new Vector3(guiMousePos.x, Screen.height - guiMousePos.y, 0f);
             Vector3 world = cam.ScreenToWorldPoint(screen);
+            // a little more forgiving when zoomed out
+            float slack = Mathf.Max(1f, viewH / 250f);
             Cat best = null;
             float bestDist = float.MaxValue;
             foreach (var cat in cats)
             {
                 float dx = Mathf.Abs(world.x - (cat.X + 0.5f));
                 float dy = world.y - cat.Y;
-                if (dx > 7f || dy < -3f || dy > 14f) continue;
+                if (dx > 7f * slack || dy < -3f * slack || dy > 14f * slack) continue;
                 float d = dx + Mathf.Abs(dy - 5f);
                 if (d < bestDist) { bestDist = d; best = cat; }
             }
@@ -571,7 +934,11 @@ namespace Cattas
             Vector3 a = cam.WorldToScreenPoint(new Vector3(cat.X - 6f, cat.Y - 2f, 0f));
             Vector3 b = cam.WorldToScreenPoint(new Vector3(cat.X + 7f, cat.Y + 12f, 0f));
             var r = Rect.MinMaxRect(a.x, Screen.height - b.y, b.x, Screen.height - a.y);
-            float t = Mathf.Max(2f, Screen.height / 400f);
+            DrawFrame(r, Mathf.Max(2f, Screen.height / 400f), colour);
+        }
+
+        static void DrawFrame(Rect r, float t, Color colour)
+        {
             var old = GUI.color;
             GUI.color = colour;
             GUI.DrawTexture(new Rect(r.xMin, r.yMin, r.width, t), Texture2D.whiteTexture);
@@ -590,7 +957,7 @@ namespace Cattas
 
         int fs;
         GUIStyle label, small, button, big, panel, selectedButton, darkLabel, darkSmall;
-        static Texture2D texPanel, texBtn, texBtnHover, texBtnDown, texBtnSel, texBtnOff;
+        static Texture2D texPanel, texBtn, texBtnHover, texBtnDown, texBtnSel, texBtnOff, texTick, texBox;
 
         void MakeStyles()
         {
@@ -602,6 +969,8 @@ namespace Cattas
                 texBtnDown = Art.RoundedBox(new Color(0.55f, 0.78f, 0.7f), new Color(0.3f, 0.5f, 0.44f));
                 texBtnSel = Art.RoundedBox(PeachCol, new Color(0.75f, 0.45f, 0.36f), 32, 11f, 3f);
                 texBtnOff = Art.RoundedBox(new Color(0.85f, 0.85f, 0.83f, 0.8f), new Color(0.6f, 0.6f, 0.6f, 0.8f));
+                texTick = Art.RoundedBox(PeachCol, new Color(0.75f, 0.45f, 0.36f), 32, 9f, 3f);
+                texBox = Art.RoundedBox(new Color(1f, 1f, 1f, 0.5f), new Color(0.55f, 0.42f, 0.36f), 32, 9f, 3f);
             }
             fs = Mathf.Max(14, Screen.height / 36);
             var border = new RectOffset(12, 12, 12, 12);
@@ -641,6 +1010,7 @@ namespace Cattas
             switch (mode)
             {
                 case GameMode.Menu: DrawMenu(); break;
+                case GameMode.Preview: DrawPreview(); break;
                 case GameMode.Playing: DrawPlaying(); break;
                 case GameMode.Results: DrawPlaying(); DrawResults(); break;
             }
@@ -667,10 +1037,15 @@ namespace Cattas
             // The Kitchen demo
             float dw = fs * 16f, dh = fs * 3.2f;
             var demoRect = new Rect((Screen.width - dw) / 2f, Screen.height * 0.25f, dw, dh);
-            if (hasKitchenDemo && GUI.Button(demoRect, "Play the Kitchen Demo", selectedButton))
+            if (hasKitchenDemo)
             {
-                StartLevel(0, "kitchen");
-                return;
+                int trophies = CountBits(PlayerPrefs.GetInt(GoalsKey("kitchen"), 0));
+                if (GUI.Button(demoRect, trophies > 0 ? $"Play the Kitchen Demo\n<size={fs * 2 / 3}>Trophies: {trophies}</size>" : "Play the Kitchen Demo",
+                               new GUIStyle(selectedButton) { richText = true }))
+                {
+                    StartLevel(0, "kitchen");
+                    return;
+                }
             }
 
             if (levelCount == 0) return;
@@ -708,9 +1083,117 @@ namespace Cattas
             }
             if (GUI.Button(new Rect(Screen.width - hb * 2 - fs * 1.5f, Screen.height - hh - fs * 0.7f, hb, hh), "Reset progress", tiny))
             {
-                PlayerPrefs.DeleteKey(UnlockedKey);
-                for (int i = 1; i <= levelCount; i++) PlayerPrefs.DeleteKey(BestKey(i));
+                PlayerPrefs.DeleteAll();
                 PlayerPrefs.Save();
+            }
+        }
+
+        static int CountBits(int v) { int n = 0; while (v != 0) { n += v & 1; v >>= 1; } return n; }
+
+        // Look around the level before starting
+        void DrawPreview()
+        {
+            float pad = fs * 0.6f;
+            DrawMinimap(pad);
+            HandleCameraMouse();
+
+            float w = fs * 24f, lineH = fs * 1.5f;
+            var goals = Goals();
+            int best = PlayerPrefs.GetInt(GoalsKey(levelFile), 0);
+            float h = lineH * (4.4f + goals.Count) + fs * 3.2f;
+            var box = new Rect(pad, Screen.height - h - pad, w, h);
+            GUI.Box(box, GUIContent.none, panel);
+            float y = box.y + pad;
+            GUI.Label(new Rect(box.x + pad * 1.5f, y, w - pad * 3, lineH), levelNumber > 0 ? $"Level {levelNumber}: {level.name}" : level.name, darkLabel);
+            y += lineH;
+            GUI.Label(new Rect(box.x + pad * 1.5f, y, w - pad * 3, lineH * 2.2f), level.hint, darkSmall);
+            y += lineH * 2.3f;
+            GUI.Label(new Rect(box.x + pad * 1.5f, y, w - pad * 3, lineH), "Goals", darkLabel);
+            y += lineH;
+            for (int i = 0; i < goals.Count; i++)
+            {
+                DrawTick(new Rect(box.x + pad * 1.5f, y + fs * 0.15f, fs * 1.1f, fs * 1.1f), (best & (1 << i)) != 0);
+                GUI.Label(new Rect(box.x + pad * 1.5f + fs * 1.6f, y, w - fs * 4, lineH), goals[i].text, darkSmall);
+                y += lineH;
+            }
+            if (GUI.Button(new Rect(box.x + pad * 1.5f, box.yMax - fs * 2.8f, w - pad * 3, fs * 2.2f), "Let's go!", selectedButton))
+            {
+                StartPlaying();
+                return;
+            }
+
+            var tip = new GUIStyle(small) { alignment = TextAnchor.UpperCenter };
+            ShadowLabel(new Rect(0, Screen.height - fs * 2.2f, Screen.width, fs * 2f),
+                        "Look around:  scroll wheel to zoom,  right-drag or WASD / arrows to move,  click the map to jump", tip);
+            if (GUI.Button(new Rect(Screen.width - pad - fs * 7, pad, fs * 7, fs * 1.6f), "Levels", button)) { ClearLevel(); mode = GameMode.Menu; }
+        }
+
+        void DrawTick(Rect r, bool done) => GUI.DrawTexture(r, done ? texTick : texBox);
+
+        // Mouse wheel zoom + right/middle drag to move the camera
+        void HandleCameraMouse()
+        {
+            Event e = Event.current;
+            if (e.type == EventType.ScrollWheel)
+            {
+                float f = Mathf.Clamp(1f + e.delta.y * 0.05f, 0.7f, 1.4f);
+                ZoomAt(f, new Vector2(e.mousePosition.x, Screen.height - e.mousePosition.y));
+                e.Use();
+            }
+            else if (e.type == EventType.MouseDrag && (e.button == 1 || e.button == 2))
+            {
+                float worldPerPixel = viewH / Screen.height;
+                camPos += new Vector2(-e.delta.x, e.delta.y) * worldPerPixel;
+                camFlying = false;
+                ClampCam();
+                e.Use();
+            }
+        }
+
+        // Small map of the whole level. Click or drag on it to move the camera.
+        void DrawMinimap(float pad)
+        {
+            if (ground == null) return;
+            bool big = levelWidth > 700 || levelHeight > 420;
+            if (!big) return;
+            float mw = fs * 13f;
+            float mh = mw * levelHeight / levelWidth;
+            if (mh > fs * 7.5f) { mh = fs * 7.5f; mw = mh * levelWidth / levelHeight; }
+            var outer = new Rect((Screen.width - mw) / 2f - pad * 0.6f, pad * 0.5f, mw + pad * 1.2f, mh + pad * 1.2f);
+            var r = new Rect(outer.x + pad * 0.6f, outer.y + pad * 0.6f, mw, mh);
+            GUI.Box(outer, GUIContent.none, panel);
+            if (levelBackground != null) GUI.DrawTexture(r, levelBackground, ScaleMode.StretchToFill);
+            else { var o = GUI.color; GUI.color = cam.backgroundColor; GUI.DrawTexture(r, Texture2D.whiteTexture); GUI.color = o; }
+            if (ground.Texture != null) GUI.DrawTexture(r, ground.Texture, ScaleMode.StretchToFill);
+
+            // kittens
+            var old = GUI.color;
+            GUI.color = new Color(1f, 0.45f, 0.55f);
+            float d = Mathf.Max(3f, fs * 0.25f);
+            foreach (var cat in cats)
+            {
+                float cx = r.x + cat.X / (float)levelWidth * mw;
+                float cy = r.yMax - cat.Y / (float)levelHeight * mh;
+                GUI.DrawTexture(new Rect(cx - d / 2, cy - d, d, d), Texture2D.whiteTexture);
+            }
+            GUI.color = old;
+
+            // what the camera can see
+            float halfH = viewH / 2f, halfW = halfH * cam.aspect;
+            var view = Rect.MinMaxRect(
+                r.x + Mathf.Clamp01((camPos.x - halfW) / levelWidth) * mw,
+                r.yMax - Mathf.Clamp01((camPos.y + halfH) / levelHeight) * mh,
+                r.x + Mathf.Clamp01((camPos.x + halfW) / levelWidth) * mw,
+                r.yMax - Mathf.Clamp01((camPos.y - halfH) / levelHeight) * mh);
+            DrawFrame(view, 2f, Color.white);
+
+            Event e = Event.current;
+            if ((e.type == EventType.MouseDown || e.type == EventType.MouseDrag) && e.button == 0 && r.Contains(e.mousePosition))
+            {
+                camPos = new Vector2((e.mousePosition.x - r.x) / mw * levelWidth, (r.yMax - e.mousePosition.y) / mh * levelHeight);
+                camFlying = false;
+                ClampCam();
+                e.Use();
             }
         }
 
@@ -719,19 +1202,18 @@ namespace Cattas
             float pad = fs * 0.6f, lineH = fs * 1.6f;
 
             // Top-left info panel
-            float panelW = fs * 30;
-            GUI.Box(new Rect(pad, pad, panelW, lineH * 3.6f), GUIContent.none, panel);
+            float panelW = fs * 26;
+            GUI.Box(new Rect(pad, pad, panelW, lineH * 2.4f), GUIContent.none, panel);
             int secs = Mathf.Max(0, Mathf.CeilToInt(ticksLeft / (float)TicksPerSecond));
             GUI.Label(new Rect(pad * 2, pad * 1.3f, panelW, lineH), levelNumber > 0 ? $"Level {levelNumber}: {level.name}" : level.name, darkLabel);
+            string secretText = secretsTotal > 0 ? $"   Secrets {secretsFound}/{secretsTotal}" : "";
             GUI.Label(new Rect(pad * 2, pad * 1.3f + lineH, panelW, lineH),
-                $"Out {released}/{level.cats}   Home {saved} (need {level.need})   Lost {lost}   Time {secs / 60}:{secs % 60:00}", darkSmall);
-            GUI.Label(new Rect(pad * 2, pad * 1.3f + lineH * 2f, panelW - pad * 3, lineH * 1.5f), level.hint, darkSmall);
+                $"Out {released}/{level.cats}   Home {saved} (need {level.need})   Lost {lost}   Time {secs / 60}:{secs % 60:00}{secretText}", darkSmall);
 
-            // Top-right buttons
+            // Top-right: speed, zoom, restart, levels
             float bw = fs * 7;
             if (mode == GameMode.Playing)
             {
-                // Speed slider
                 float sw = fs * 10f, sx = Screen.width - pad - sw;
                 GUI.Box(new Rect(sx - pad * 0.5f, pad * 0.5f, sw + pad, lineH * 1.9f), GUIContent.none, panel);
                 GUI.Label(new Rect(sx, pad * 0.5f, sw, lineH), $"Speed {Mathf.RoundToInt(speedPercent)}%",
@@ -740,9 +1222,17 @@ namespace Cattas
                     speedPercent, minSpeedPercent, 100f));
 
                 float by = pad + lineH * 2f;
-                if (GUI.Button(new Rect(Screen.width - pad - bw, by, bw, lineH), "Restart", button))
-                    BuildLevel();
-                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 1.2f, bw, lineH), "Levels", button))
+                float zb = (bw - pad * 0.5f) / 2f;
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by, zb, lineH), "-", button))
+                    ZoomAt(1.25f, new Vector2(Screen.width / 2f, Screen.height / 2f));
+                if (GUI.Button(new Rect(Screen.width - pad - zb, by, zb, lineH), "+", button))
+                    ZoomAt(0.8f, new Vector2(Screen.width / 2f, Screen.height / 2f));
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 1.2f, bw, lineH), "Restart", button))
+                {
+                    BuildLevel(false);
+                    return;
+                }
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 2.4f, bw, lineH), "Levels", button))
                 {
                     ClearLevel();
                     mode = GameMode.Menu;
@@ -750,9 +1240,8 @@ namespace Cattas
                 }
             }
 
-            if (levelWidth > cam.orthographicSize * cam.aspect * 2f)
-                ShadowLabel(new Rect(0, pad, Screen.width, lineH), "Scroll: arrow keys / A D, or right-click drag",
-                    new GUIStyle(small) { alignment = TextAnchor.UpperCenter });
+            DrawMinimap(pad);
+            DrawPopups();
 
             if (mode != GameMode.Playing) return;
 
@@ -769,25 +1258,38 @@ namespace Cattas
                 GUI.Label(new Rect(p.x - fs, Screen.height - p.y - fs, fs * 2, fs * 2), fuse.ToString(), fuseStyle);
             }
 
-            Event e = Event.current;
-
-            // Right- or middle-drag to scroll wide levels
-            if (e.type == EventType.MouseDrag && (e.button == 1 || e.button == 2))
-            {
-                float worldPerPixel = cam.orthographicSize * 2f / Screen.height;
-                cam.transform.position -= Vector3.right * e.delta.x * worldPerPixel;
-                ClampCamera();
-                e.Use();
-                return;
-            }
+            HandleCameraMouse();
 
             // Highlight the cat under the mouse, and give it the trait on click.
+            Event e = Event.current;
             Cat hovered = CatUnderMouse(e.mousePosition);
             if (hovered != null) DrawOutline(hovered, Color.white);
             if (e.type == EventType.MouseDown && e.button == 0 && hovered != null)
             {
                 TryAssign(hovered);
                 e.Use();
+            }
+        }
+
+        void DrawPopups()
+        {
+            float y = Screen.height * 0.24f;
+            for (int i = popups.Count - 1; i >= 0; i--)
+            {
+                float age = Time.unscaledTime - popups[i].time;
+                if (age > 3f) { popups.RemoveAt(i); continue; }
+            }
+            foreach (var p in popups)
+            {
+                float age = Time.unscaledTime - p.time;
+                float a = Mathf.Clamp01(3f - age);
+                var st = new GUIStyle(big) { fontSize = Mathf.RoundToInt(fs * 1.4f) };
+                st.normal.textColor = new Color(1f, 0.92f, 0.5f, a);
+                var old = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, a);
+                ShadowLabel(new Rect(0, y - age * fs * 0.5f, Screen.width, fs * 2.2f), p.text, st);
+                GUI.color = old;
+                y += fs * 2.2f;
             }
         }
 
@@ -819,16 +1321,26 @@ namespace Cattas
         void DrawResults()
         {
             bool won = saved >= level.need;
-            var box = new Rect(Screen.width * 0.2f, Screen.height * 0.28f, Screen.width * 0.6f, Screen.height * 0.44f);
+            var goals = Goals();
+            var box = new Rect(Screen.width * 0.22f, Screen.height * 0.2f, Screen.width * 0.56f, Screen.height * 0.58f);
             GUI.Box(box, GUIContent.none, panel);
 
             string msg;
             if (won)
-                msg = saved == level.cats ? $"PURR-FECT!\nAll {saved} cats made it home!" : $"Level complete!\n{saved} cats home (needed {level.need})";
+                msg = saved == level.cats ? $"PURR-FECT!\nAll {saved} kittens made it home!" : $"Level complete!\n{saved} kittens home (needed {level.need})";
             else
-                msg = (timeUp ? "Out of time!\n" : "") + $"Only {saved} cats made it home...\nYou need {level.need}.";
+                msg = (timeUp ? "Out of time!\n" : "") + $"Only {saved} kittens made it home...\nYou need {level.need}.";
             var bigDark = new GUIStyle(big); bigDark.normal.textColor = InkCol;
-            GUI.Label(new Rect(box.x, box.y, box.width, box.height * 0.65f), msg, bigDark);
+            GUI.Label(new Rect(box.x, box.y + fs * 0.5f, box.width, fs * 5f), msg, bigDark);
+
+            // Goals with ticks
+            float gy = box.y + fs * 6f, gx = box.x + box.width * 0.18f, lineH = fs * 1.6f;
+            for (int i = 0; i < goals.Count; i++)
+            {
+                DrawTick(new Rect(gx, gy + fs * 0.2f, fs * 1.2f, fs * 1.2f), goals[i].done);
+                GUI.Label(new Rect(gx + fs * 1.8f, gy, box.width * 0.7f, lineH), goals[i].text, darkLabel);
+                gy += lineH;
+            }
 
             float bw = fs * 8f, bh = fs * 2f, by = box.yMax - bh * 1.5f;
             bool hasNext = won && levelNumber > 0 && levelNumber < levelCount;
@@ -841,7 +1353,7 @@ namespace Cattas
                 if (GUI.Button(new Rect(bx, by, bw, bh), "Next level", button)) { StartLevel(levelNumber + 1); return; }
                 bx += bw + fs;
             }
-            if (GUI.Button(new Rect(bx, by, bw, bh), won ? "Play again" : "Try again", button)) { BuildLevel(); mode = GameMode.Playing; return; }
+            if (GUI.Button(new Rect(bx, by, bw, bh), won ? "Play again" : "Try again", button)) { BuildLevel(false); return; }
             bx += bw + fs;
             if (GUI.Button(new Rect(bx, by, bw, bh), "Levels", button)) { ClearLevel(); mode = GameMode.Menu; }
         }

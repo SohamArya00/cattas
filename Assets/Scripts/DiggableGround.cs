@@ -12,6 +12,7 @@ namespace Cattas
         public int Width { get; private set; }
         public int Height { get; private set; }
         public int ArtScale { get; private set; } = 1;
+        public Texture2D Texture => texture;
 
         bool[] solid;
         bool[] hard;   // stone: can't be dug, zoomed or zapped

@@ -130,24 +130,40 @@ m.put(8, 33, 'H'); m.put(110, 18, 'E')
 write(10, "Graduation Day", "Everything you've learned! Bridge the gap, get past the wall, then get down the cliff.", 15, 10,
       {"LitterLord": 2, "Fluffchute": 4, "BiscuitBaker": 2, "Scratcher": 2, "CurtainClimber": 2,
        "Zoomies": 2, "CableChewer": 2, "HairballBridge": 2}, m, time=420)
-# Kitchen demo - painted level (art from tools/make_kitchen_art.py). Map only marks hatch, exit and stone.
-m = Map(80)
-m.rect(0, 0, 80, 5, 'X')                       # tiled floor: stone
-m.rect(25, 13, 26, 19, 'X'); m.rect(31, 13, 32, 19, 'X'); m.rect(25, 13, 32, 14, 'X')   # steel sink
-m.put(9, 31, 'H'); m.put(72, 18, 'E')
-body = f"""// Cattas - Kitchen demo (painted level)
+# Kitchen demo - big painted level (art from tools/make_kitchen_art.py). Map only marks hatch, exit and stone.
+m = Map(120, 68)
+m.rect(0, 0, 120, 5, 'X')                                   # tiled floor
+m.rect(42, 19, 43, 25, 'X'); m.rect(48, 19, 49, 25, 'X'); m.rect(42, 19, 49, 20, 'X')   # steel sink
+m.rect(58, 25, 64, 29, 'X')                                 # toaster
+m.rect(70, 6, 83, 61, 'X')                                  # fridge (metal - can't dig or zoom through)
+m.rect(83, 6, 98, 25, 'X')                                  # stove
+m.put(13, 44, 'H'); m.put(115, 5, 'E')
+body = f"""// Cattas - Kitchen demo (big painted level, 960x540)
 // With painted art, the FOREGROUND picture decides what's solid. The map below only marks:
-//   H = hatch, E = exit, X = stone (anything solid in an X block can't be dug)
+//   H = hatch, E = exit, X = stone/metal (anything solid in an X block can't be dug)
+// Objects use game pixels with y measured UP from the floor of the level.
 name: Kitchen Chaos
-hint: Kittens are climbing in the window! Get them to the cat basket - watch out for the sink and that big fridge...
-cats: 15
-need: 10
-rate: 2
-time: 300
+hint: Kittens are climbing in the window! Get them to the cat bed. The sink is full, the hob is on and the fridge is solid metal... and there's stuff hidden around the kitchen.
+size: 960 540
+cats: 20
+need: 12
+rate: 2.5
+time: 420
+par: 240
 background: kitchen_bg
 foreground: kitchen_fg
 markers: off
-traits: LitterLord=2, Fluffchute=5, BiscuitBaker=2, Zoomies=2, CurtainClimber=4, CableChewer=2, Scratcher=2, HairballBridge=2
+traits: LitterLord=2, Fluffchute=6, BiscuitBaker=2, Zoomies=2, CurtainClimber=6, CableChewer=2, Scratcher=2, HairballBridge=2
+object: water 344 160 384 195
+object: fire 680 199 712 216 gas
+object: fire 736 199 768 216 gas
+object: switch 712 40 736 52 gas valve
+object: prop 255 258 285 290 prop_cookiejar
+object: secret 262 259 278 273 secret_yarn Golden Yarn Ball
+object: prop 600 480 625 516 prop_cereal
+object: secret 604 481 620 493 secret_mouse Lost Toy Mouse
+object: prop 818 208 858 258 prop_pan
+object: secret 830 202 847 216 secret_fishbone Golden Fishbone
 map:
 {m.text()}
 """

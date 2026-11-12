@@ -18,6 +18,14 @@ class Level:
         while rows and not rows[-1].strip(): rows.pop()
         self.R = len(rows); self.C = max(len(r) for r in rows)
         self.W, self.H = self.C * CS, self.R * CS
+        if "size" in self.meta:
+            w, h = self.meta["size"].replace(",", " ").split()[:2]; self.W, self.H = int(w), int(h)
+        self.objects = []   # [type, x0, y0, x1, y1, extra, on]
+        for line in txt:
+            st = line.strip()
+            if st.startswith("object:"):
+                parts = st[7:].split()
+                self.objects.append([parts[0], int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), parts[5:] , True])
         self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)
         self.hatches, self.exits = [], []
         art = self.meta.get("foreground", "")
@@ -204,6 +212,22 @@ class Game:
     """plan: list of (condition_fn(game, cat) -> bool, trait). Each step is applied once, to the first cat that matches."""
     def __init__(s, n, plan=(), max_secs=300):
         s.lv = Level(n); s.cats = []; s.all = []; s.plan = list(plan); s.max_ticks = max_secs * 30
+    def check_objects(s):
+        for c in s.all:
+            if not c.active(): continue
+            for o in s.lv.objects:
+                typ, x0, y0, x1, y1, extra, on = o
+                feet = x0 <= c.x < x1 and y0 <= c.y < y1
+                body = x0 - 2 <= c.x < x1 + 2 and c.y < y1 and c.y + 11 > y0
+                if typ == "water" and feet: c.state = "soaked"; break
+                if typ == "fire" and on and feet: c.state = "burnt"; break
+                if typ == "switch" and on and body:
+                    o[6] = False
+                    for f in s.lv.objects:
+                        if f[0] == "fire" and f[5][:1] == extra[:1]: f[6] = False
+                if typ == "prop" and on and body: o[6] = False
+                if typ == "secret" and on and body and not any(p[0] == "prop" and p[6] and p[1] < x1 and x0 < p[3] and p[2] < y1 and y0 < p[4] for p in s.lv.objects):
+                    o[6] = False; s.secrets = getattr(s, "secrets", 0) + 1
     def run(s):
         lv = s.lv; released = 0; nxt = 30; t = 0
         while t < s.max_ticks:
@@ -219,6 +243,7 @@ class Game:
                 for c in s.cats:
                     if cond(s, c) and c.give(trait): s.plan.pop(0); break
             for c in list(s.cats): c.tick()
+            s.check_objects()
             s.cats = [c for c in s.all if c.active()]
             if released == lv.cats and all(c.state == "block" for c in s.cats): break
         res = {}
@@ -260,9 +285,9 @@ if __name__ == "__main__":
         (walking_near(476, 484, 232, 1), "Scratcher"),
         (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
     allok &= check("kitchen", "no traits used (should FAIL)", expect_win=False)
-    allok &= check("kitchen", "Bridge sink, baker, zoom fridge, free baker", [
-        (walking_near(198, 205, 150, 1), "HairballBridge"),
-        (walking_near(158, 185, 150), "BiscuitBaker"),
-        (walking_near(258, 266, 150, 1), "Zoomies"),
+    allok &= check("kitchen", "Bridge sink, baker, scratch to floor, free baker", [
+        (walking_near(336, 343, 200, 1), "HairballBridge"),
+        (walking_near(312, 330, 200), "BiscuitBaker"),
+        (walking_near(415, 440, 200, 1), "Scratcher"),
         (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
     print("ALL GOOD" if allok else "SOME CHECKS FAILED")

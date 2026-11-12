@@ -5,7 +5,7 @@ A cat-themed puzzle-platformer: guide a stream of cats safely home by giving the
 Made with **Unity 6** (Universal 2D / URP).
 
 ## Status
-**Kitchen demo ✅** – painted retro-kitchen level, animated kittens, smooth movement, particles, sound effects, styled menus.
+**Kitchen demo ✅** – big painted kitchen (960×540) with zoom/scroll camera, minimap, look-around preview, hazards (full sink, gas hob, metal fridge), a gas valve switch, knock-over props hiding 3 secrets, goals/trophies, animated kittens, particles and sound effects.
 
 **Levels ✅** – level select with saved progress, timer, win/lose screens, scrolling camera, stone blocks, and 10 starter levels that introduce the traits one by one.
 
@@ -62,12 +62,21 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `H` | hatch – cats drop out of here |
 | `E` | exit – put ground under it |
 
-Settings: `name`, `hint`, `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
+Settings: `name`, `hint`, `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
 Maps are normally 45 rows tall; make them wider than 80 columns for a scrolling level.
+
+**Objects** (one per line, game pixels with y measured up from the bottom):
+```
+object: water  x0 y0 x1 y1                 kittens that fall in get soaked
+object: fire   x0 y0 x1 y1 gas             singes kittens while lit
+object: switch x0 y0 x1 y1 gas valve       a kitten touching it turns that group off
+object: prop   x0 y0 x1 y1 prop_pan        can be knocked over (secrets hide behind props)
+object: secret x0 y0 x1 y1 secret_mouse Lost Toy Mouse
+```
 
 Handy numbers: cats can step up 6px (less than one block — use ramps!), and falls over 60px (more than 7 blocks) splat without a Fluffchute.
 
-`tools/make_levels.py` generated the starter levels, and `tools/sim.py` is a copy of the cat rules in Python that checks each level is solvable (`python3 tools/sim.py`).
+`bash tools/check_compile.sh` compile-checks the scripts without Unity. `tools/make_levels.py` generated the starter levels, and `tools/sim.py` is a copy of the cat rules in Python that checks each level is solvable (`python3 tools/sim.py`).
 
 ## Code layout
 | File | What it does |
