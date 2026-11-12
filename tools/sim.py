@@ -45,14 +45,14 @@ class Level:
                         for xx in range(x0, x0 + CS):
                             if self.is_solid(xx, yy) and 0 <= xx < self.W and 0 <= yy < self.H: self.hard[yy * self.W + xx] = 1
                     continue
-                if art and ch not in 'HE': continue
+                if art and ch not in 'HhE': continue
                 if ch == '#': self.fill(x0, y0, x0 + CS, y0 + CS)
                 elif ch == 'X': self.fill(x0, y0, x0 + CS, y0 + CS, True)
                 elif ch in '/\\':
                     for i in range(CS):
                         h = i + 1 if ch == '/' else CS - i
                         self.fill(x0 + i, y0, x0 + i + 1, y0 + h)
-                elif ch == 'H': self.hatches.append((x0 + 4, y0 - 2))
+                elif ch in 'Hh': self.hatches.append((x0 + 4, y0 - 2, -1 if ch == 'h' else 1))
                 elif ch == 'E': self.exits.append((x0 + 4 - 4, y0, 9, 10))
         self.cats = int(self.meta.get("cats", 10)); self.need = int(self.meta.get("need", 5))
         self.rate = float(self.meta.get("rate", 1.5))
@@ -108,7 +108,10 @@ class Cat:
         if s.active() and s.fuse > 0:
             s.fuse -= 1
             if s.fuse == 0:
-                lv.carve_circle(s.x, s.y + 1, 12); s.state = "zapped"; return
+                lv.carve_circle(s.x, s.y + 1, 12); s.state = "zapped"
+                for o in lv.objects:
+                    if o[0] == "trap" and o[6] and ((o[1] + o[3]) / 2 - s.x) ** 2 + ((o[2] + o[4]) / 2 - s.y - 1) ** 2 <= 22 * 22: o[6] = False
+                return
         getattr(s, s.state)() if s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch") else None
         if s.active():
             if lv.at_exit(s.x, s.y): s.state = "saved"
@@ -221,6 +224,7 @@ class Game:
                 body = x0 - 2 <= c.x < x1 + 2 and c.y < y1 and c.y + 11 > y0
                 if typ == "water" and feet: c.state = "soaked"; break
                 if typ == "fire" and on and feet: c.state = "burnt"; break
+                if typ == "trap" and on and feet: c.state = "snapped"; break
                 if typ == "switch" and on and body:
                     o[6] = False
                     for f in s.lv.objects:
@@ -235,8 +239,8 @@ class Game:
             if released < lv.cats:
                 nxt -= 1
                 if nxt <= 0:
-                    hx, hy = lv.hatches[released % len(lv.hatches)]
-                    c = Cat(s, lv, hx, hy); s.cats.append(c); s.all.append(c); released += 1
+                    hx, hy, hd = lv.hatches[released % len(lv.hatches)]
+                    c = Cat(s, lv, hx, hy); c.dir = hd; s.cats.append(c); s.all.append(c); released += 1
                     nxt = max(1, round(lv.rate * 30))
             if s.plan:
                 cond, trait = s.plan[0]
@@ -284,10 +288,7 @@ if __name__ == "__main__":
         (walking_near(428, 436, 232, 1), "Zoomies"),
         (walking_near(476, 484, 232, 1), "Scratcher"),
         (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
-    allok &= check("kitchen", "no traits used (should FAIL)", expect_win=False)
-    allok &= check("kitchen", "Bridge sink, baker, scratch to floor, free baker", [
-        (walking_near(336, 343, 200, 1), "HairballBridge"),
-        (walking_near(312, 330, 200), "BiscuitBaker"),
-        (walking_near(396, 412, 200, 1), "Scratcher"),
-        (lambda g, c: c.state == "block" and any(o.state == "saved" for o in g.all), "CableChewer")])
+    allok &= check("kitchen", "no traits used (should FAIL: mouse trap)", expect_win=False)
+    allok &= check("kitchen", "Floor route: bridge over the mouse trap", [(walking_near(796, 806, 40, 1), "HairballBridge")])
+    allok &= check("kitchen", "Floor route: zap the mouse trap", [(walking_near(662, 668, 40, 1), "CableChewer")])
     print("ALL GOOD" if allok else "SOME CHECKS FAILED")

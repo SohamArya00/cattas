@@ -59,7 +59,7 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `#` | dirt (can be dug) |
 | `X` | stone (can't be dug, zoomed or zapped) |
 | `/` `\` | dirt ramps |
-| `H` | hatch – cats drop out of here |
+| `H` / `h` | hatch – cats drop out of here walking right (`H`) or left (`h`) |
 | `E` | exit – put ground under it |
 
 Settings: `name`, `hint`, `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
@@ -71,6 +71,7 @@ object: water  x0 y0 x1 y1                 kittens that fall in get soaked
 object: fire   x0 y0 x1 y1 gas             singes kittens while lit
 object: switch x0 y0 x1 y1 gas valve       a kitten touching it turns that group off
 object: prop   x0 y0 x1 y1 prop_pan        can be knocked over (secrets hide behind props)
+object: trap   x0 y0 x1 y1 mousetrap       SNAP! bridge over it or ZAP it nearby to disarm
 object: secret x0 y0 x1 y1 secret_mouse Lost Toy Mouse
 ```
 

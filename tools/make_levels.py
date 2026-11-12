@@ -137,13 +137,13 @@ m.rect(42, 19, 43, 25, 'X'); m.rect(48, 19, 49, 25, 'X'); m.rect(42, 19, 49, 20,
 m.rect(58, 25, 64, 29, 'X')                                 # toaster
 m.rect(70, 6, 83, 61, 'X')                                  # fridge (metal - can't dig or zoom through)
 m.rect(83, 6, 98, 25, 'X')                                  # stove
-m.put(13, 44, 'H'); m.put(115, 5, 'E')
+m.put(13, 44, 'h'); m.put(115, 5, 'E')
 body = f"""// Cattas - Kitchen demo (big painted level, 960x540)
 // With painted art, the FOREGROUND picture decides what's solid. The map below only marks:
-//   H = hatch, E = exit, X = stone/metal (anything solid in an X block can't be dug)
+//   h = hatch (kittens walk left), E = exit, X = stone/metal (anything solid in an X block can't be dug)
 // Objects use game pixels with y measured UP from the floor of the level.
 name: Kitchen Chaos
-hint: Kittens are climbing in the window! Get them to the cat bed. The sink is full, the hob is on and the fridge is solid metal... and there's stuff hidden around the kitchen.
+hint: Kittens are climbing in the window! The cat tree leads down to the floor - watch out for the mouse trap. Feeling brave? The worktops hide secrets... but the sink is full, the hob is lit and the fridge is solid metal.
 size: 960 540
 cats: 20
 need: 12
@@ -153,11 +153,12 @@ par: 240
 background: kitchen_bg
 foreground: kitchen_fg
 markers: off
-traits: LitterLord=2, Fluffchute=6, BiscuitBaker=2, Zoomies=2, CurtainClimber=6, CableChewer=2, Scratcher=2, HairballBridge=2
+traits: LitterLord=20, Fluffchute=20, BiscuitBaker=20, Zoomies=20, CurtainClimber=20, CableChewer=20, Scratcher=20, HairballBridge=20
 object: water 344 160 384 195
 object: fire 680 199 712 216 gas
 object: fire 736 199 768 216 gas
 object: switch 712 40 736 52 gas valve
+object: trap 820 40 844 44 mousetrap
 object: prop 255 258 285 290 prop_cookiejar
 object: secret 262 259 278 273 secret_yarn Golden Yarn Ball
 object: prop 600 480 625 516 prop_cereal

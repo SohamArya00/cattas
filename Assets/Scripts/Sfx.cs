@@ -139,6 +139,9 @@ namespace Cattas
                 return v * 0.18f;
             });
 
+            // mouse trap SNAP
+            Make("snap", 0.25f, t => (Noise() * Decay(t, 60f) * 1.2f + Tone(t, 2400f) * Decay(t, 40f) * 0.4f + Tone(t, 90f) * Decay(t, 15f) * 0.6f));
+
             // a switch / valve turned
             Make("clunk", 0.3f, t => (Tone(t, 140f) * 0.6f + Noise() * 0.3f) * Decay(t, 18f) + Noise() * 0.15f * Mathf.Clamp01(t - 0.05f) * Decay(t, 6f));
 

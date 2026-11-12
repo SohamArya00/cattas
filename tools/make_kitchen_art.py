@@ -4,7 +4,7 @@ Game coordinates: y measured UP from the bottom. Everything is supersampled for 
 
 Layout (game pixels):
   floor tiles 0-40 (stone) | window sill top 316 (x30-215) | shelf top 258 (x205-300)
-  left worktop top 200 (x0-560) with sink (outer 336-392, water inside) and toaster (466-506)
+  cat tree in the corner (platforms 258/200/145/90), pantry 112-136, left worktop top 200 (x136-560, cabinets on legs) with sink (outer 336-392, water inside) and toaster (466-506)
   fridge 560-664 from 64 up to 480 (metal), on legs with a gap underneath 40-64 | stove 664-784, top 200, gas burners
   right worktop 784-880 top 200 on legs (open underneath) | cat bed (exit) on the floor ~924
 """
@@ -113,6 +113,15 @@ for bx in (214, 288): P.poly([(bx, 252), (bx + 6, 252), (bx + 6, 244)], WOOD_D) 
 # tap over the sink
 P.rect(372, 200, 376, 232, STEEL); P.arc(358, 220, 386, 244, 0, 180, STEEL, 4)
 P.rect(357, 220, 361, 229, STEEL); P.ell(374, 202, 6, 2, STEEL_D)
+# little legs under the cabinets and pantry
+for lx in list(range(140, 560, 56)) + [556, 114, 130]:
+    P.rect(lx, 40, lx + 3, 54, (120, 100, 90, 255))
+# cat tree posts (sisal rope) and a dangling toy
+for px, top in [(24, 252), (80, 194)]:
+    P.rect(px, 40, px + 8, top, (200, 170, 120, 255))
+    for yy in range(42, top, 3): P.rect(px, yy, px + 8, yy + 0.8, (176, 146, 100, 255))
+P.line([(60, 252), (60, 228)], (120, 100, 90, 255), 0.6); P.ell(60, 225, 3, 3, (240, 120, 140, 255))
+P.rrect(4, 40, 108, 46, 3, (214, 190, 160, 255))
 # fridge feet + shadow under fridge and stove
 P.poly([(566, 40), (574, 40), (578, 64), (568, 64)], (110, 110, 118, 255)); P.poly([(650, 40), (658, 40), (656, 64), (646, 64)], (110, 110, 118, 255))
 P.rect(670, 40, 680, 52, (90, 90, 96, 255)); P.rect(768, 40, 778, 52, (90, 90, 96, 255))
@@ -166,8 +175,8 @@ for i, x in enumerate(range(0, 960, 20)):                          # floor tiles
     for j, y in enumerate(range(0, 40, 20)):
         P.rect(x, y, x + 20, y + 20, (246, 232, 214, 255) if (i + j) % 2 == 0 else (226, 170, 150, 255))
 P.rect(0, 37, 960, 40, (214, 196, 178, 255))
-def cabinets(x0, x1, top=190, drawers=False):
-    P.rect(x0, 40, x1, top, MINT); P.rect(x0, 40, x1, 47, MINT_D)
+def cabinets(x0, x1, top=190, drawers=False, bottom=54):
+    P.rect(x0, bottom, x1, top, MINT); P.rect(x0, bottom, x1, bottom + 5, MINT_D)
     n = max(1, round((x1 - x0) / 56)); w = (x1 - x0) / n
     for k in range(n):
         a, b = x0 + k * w + 3, x0 + (k + 1) * w - 3
@@ -175,12 +184,19 @@ def cabinets(x0, x1, top=190, drawers=False):
         if drawers:
             P.rrect(a, top - 26, b, top - 4, 2, MINT_L, MINT_D, 0.7); P.ell((a + b) / 2, top - 15, 5, 1.5, BRASS)
             dtop = top - 30
-        P.rrect(a, 51, b, dtop, 3, MINT_L, MINT_D, 0.7); P.rrect(a + 5, 57, b - 5, dtop - 6, 2, MINT)
-        P.ell(b - 7 if k % 2 == 0 else a + 7, (51 + dtop) / 2 + 10, 2.2, 2.2, BRASS)
+        P.rrect(a, bottom + 8, b, dtop, 3, MINT_L, MINT_D, 0.7); P.rrect(a + 5, bottom + 14, b - 5, dtop - 6, 2, MINT)
+        P.ell(b - 7 if k % 2 == 0 else a + 7, (bottom + 8 + dtop) / 2 + 8, 2.2, 2.2, BRASS)
 def worktop(x0, x1):
     P.rect(x0, 190, x1, 200, WOOD); P.rect(x0, 198, x1, 200, WOOD_L); P.rect(x0, 190, x1, 191.5, WOOD_D)
     for x in range(int(x0) + 23, int(x1), 31): P.rect(x, 191.5, x + 0.6, 198, WOOD_D)
-cabinets(0, 560, drawers=True); worktop(0, 560)
+cabinets(136, 560, drawers=True); worktop(136, 560)
+# tall pantry cupboard (on legs) between the cat tree corner and the worktop
+P.rrect(112, 54, 136, 300, 2, MINT, INK, 0.8, top_only=True)
+P.rrect(115, 62, 133, 292, 2, MINT_L, MINT_D, 0.6); P.ell(130, 180, 1.6, 1.6, BRASS)
+# cat tree platforms (carpeted) - kittens hop down these to the floor
+for x0, y0, x1 in [(0, 252, 70), (50, 194, 112), (0, 139, 70), (50, 84, 112)]:
+    P.rrect(x0, y0, x1, y0 + 6, 2, (214, 190, 160, 255), (150, 120, 96, 255), 0.6, top_only=True)
+    P.rect(x0 + 1, y0 + 4.5, x1 - 1, y0 + 6, (232, 212, 184, 255))
 # sink: walls 336-344 & 384-392, bottom 152-160, open inside (the water is drawn by the game)
 P.rect(336, 152, 392, 200, STEEL); P.rect(344, 160, 384, 200, (0, 0, 0, 0))
 P.rect(336, 198, 344, 200, STEEL_L); P.rect(384, 198, 392, 200, STEEL_L); P.rect(337, 153, 339, 197, STEEL_L); P.rect(389, 153, 391, 197, STEEL_D)
@@ -251,6 +267,11 @@ def fishbone(P, w, h):
     P.line([(2, 7), (13, 7)], GOLD, 1.4); P.poly([(13, 7), (16, 10), (16, 4)], GOLD)
     for k in range(4, 12, 2.5 if False else 3): P.line([(k, 4), (k + 1, 7), (k, 10)], GOLD, 1)
     P.ell(2.5, 7, 2.5, 2.2, GOLD); P.ell(2, 7.5, 0.6, 0.6, (80, 56, 48, 255)); sparkle(P, 12, 12, 2.2)
+def mousetrap(P, w, h):
+    P.rect(0, 0, 24, 3, (200, 156, 100, 255)); P.rect(0, 2.4, 24, 3, (226, 186, 142, 255))
+    P.line([(4, 3), (4, 8), (20, 8), (20, 3)], STEEL_D, 1)
+    P.rect(11, 3, 13, 5, STEEL_D)
+    P.poly([(14, 3), (21, 3), (21, 7)], (250, 210, 90, 255)); P.ell(18, 4.5, 0.8, 0.8, (220, 170, 60, 255))
 def valve(P, w, h):
     P.rect(0, 2, 24, 6, STEEL_D); P.rect(10, 4, 14, 8, STEEL_D)
     P.ell(12, 8, 5, 3.5, (220, 70, 70, 255)); P.ell(12, 8, 2, 1.4, (250, 230, 230, 255))
@@ -261,3 +282,4 @@ prop("secret_yarn", 16, 14, yarn)
 prop("secret_mouse", 16, 12, mouse)
 prop("secret_fishbone", 17, 14, fishbone)
 prop("valve", 24, 12, valve)
+prop("mousetrap", 24, 10, mousetrap)

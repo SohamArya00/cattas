@@ -66,8 +66,10 @@ namespace Cattas
         // Smooth movement: the rules move the cat once per game step; the picture glides between steps.
         Vector3 prevPos, curPos;
 
-        public void Init(GameBootstrap game, DiggableGround ground, int startX, int startY, Sprite sprite, Color tint, Sprite[] animFrames = null)
+        public void Init(GameBootstrap game, DiggableGround ground, int startX, int startY, Sprite sprite, Color tint,
+                         Sprite[] animFrames = null, int startDir = 1)
         {
+            dir = startDir < 0 ? -1 : 1;
             frames = animFrames != null && animFrames.Length >= 6 ? animFrames : null;
             this.game = game;
             this.ground = ground;

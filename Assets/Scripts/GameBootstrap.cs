@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum FxKind { Dig, Smash, Hairball, Zap, Splat, Puff, Home, Soak, Burn, Knock, Secret, Switch }
+    public enum FxKind { Dig, Smash, Hairball, Zap, Splat, Puff, Home, Soak, Burn, Knock, Secret, Switch, Snap }
 
     // The "brain" of the game. It starts itself automatically when you press Play,
     // so there is nothing to set up in the Unity editor.
@@ -32,6 +32,7 @@ namespace Cattas
 
         readonly List<Cat> cats = new List<Cat>();
         readonly List<Vector2Int> spawnPoints = new List<Vector2Int>();
+        readonly List<int> spawnDirs = new List<int>();   // 1 = kittens walk right, -1 = left
         readonly List<RectInt> exitZones = new List<RectInt>();
 
         // Current level
@@ -215,6 +216,7 @@ namespace Cattas
         {
             ClearLevel();
             spawnPoints.Clear();
+            spawnDirs.Clear();
             exitZones.Clear();
             released = saved = lost = elapsedTicks = 0;
             secretsFound = secretsTotal = 0;
@@ -270,7 +272,7 @@ namespace Cattas
                 {
                     int x0 = col * cs;
                     char c = level.Cell(col, row);
-                    if (c == 'H') { AddHatch(x0 + cs / 2, y0); continue; }
+                    if (c == 'H' || c == 'h') { AddHatch(x0 + cs / 2, y0, c == 'h' ? -1 : 1); continue; }
                     if (c == 'E') { AddExit(x0 + cs / 2, y0); continue; }
                     if (painted)
                     {
@@ -311,9 +313,10 @@ namespace Cattas
             ApplyCamera();
         }
 
-        void AddHatch(int centreX, int bottomY)
+        void AddHatch(int centreX, int bottomY, int dir = 1)
         {
             spawnPoints.Add(new Vector2Int(centreX, bottomY - 2));
+            spawnDirs.Add(dir);
             if (level.showMarkers) MakeBox("Hatch", new Vector2Int(centreX - 12, bottomY), 24, 10, new Color32(70, 60, 60, 255), 1);
         }
 
@@ -381,7 +384,8 @@ namespace Cattas
                     case "switch":
                     case "prop":
                     case "secret":
-                        t.go = MakeArtThing(o, o.type == "prop" ? 7 : o.type == "switch" ? 4 : 3);
+                    case "trap":
+                        t.go = MakeArtThing(o, o.type == "prop" ? 7 : o.type == "switch" || o.type == "trap" ? 4 : 3);
                         if (o.type == "secret")
                         {
                             secretsTotal++;
@@ -452,6 +456,13 @@ namespace Cattas
                         case "fire":
                             if (t.on && FeetIn(r, x, y)) cat.Hazard(FxKind.Burn);
                             break;
+                        case "trap":
+                            if (t.on && FeetIn(r, x, y))
+                            {
+                                cat.Hazard(FxKind.Snap);
+                                t.timer = 0.35f; // little "snap" bounce
+                            }
+                            break;
                         case "switch":
                             if (t.on && BodyTouches(r, x, y)) FlipSwitch(t);
                             break;
@@ -515,6 +526,21 @@ namespace Cattas
             Popup($"Secret found: {t.data.title}!  ({secretsFound}/{secretsTotal})");
         }
 
+        // A Cable Chewer's ZAP breaks any mouse traps close by
+        void DisarmTrapsNear(int x, int y, int radius)
+        {
+            foreach (var t in things)
+            {
+                if (t.data.type != "trap" || !t.on) continue;
+                var c = t.data.rect.center;
+                if ((c - new Vector2(x, y)).sqrMagnitude > radius * radius) continue;
+                t.on = false;
+                if (t.sr != null) t.sr.color = new Color(0.5f, 0.45f, 0.4f, 0.8f);
+                if (t.go != null) t.go.transform.localRotation = Quaternion.Euler(0f, 0f, 12f);
+                Popup("Mouse trap disarmed!");
+            }
+        }
+
         // Every frame: flames flicker, water bobs, secrets twinkle.
         void AnimateThings()
         {
@@ -534,6 +560,16 @@ namespace Cattas
                                           new Vector2(Random.Range(-6f, 6f), Random.Range(20f, 45f)), col, Random.Range(1.5f, 3.2f), Random.Range(0.25f, 0.5f), 40f, 9);
                         }
                         if (t.sr != null) t.sr.color = new Color(1f, 0.6f, 0.25f, 0.2f + 0.1f * Mathf.Sin(Time.time * 17f));
+                        break;
+                    case "trap":
+                        if (t.go == null) break;
+                        if (t.timer > 0f)
+                        {
+                            t.timer -= Time.deltaTime;
+                            float k = 1f + 0.3f * Mathf.Sin(t.timer * 40f) * t.timer;
+                            t.go.transform.localScale = new Vector3(1f, k, 1f);
+                        }
+                        else t.go.transform.localScale = Vector3.one;
                         break;
                     case "water":
                         if (t.go != null) t.go.transform.localPosition = new Vector3(r.x, r.y + Mathf.Sin(Time.time * 2.5f) * 0.6f, 0f);
@@ -574,7 +610,8 @@ namespace Cattas
         Vector2 HatchView(float vh)
         {
             var h = spawnPoints.Count > 0 ? spawnPoints[0] : new Vector2Int(levelWidth / 2, levelHeight / 2);
-            return ClampPos(new Vector2(h.x + vh * 0.4f, h.y - vh * 0.15f), vh);
+            int d = spawnDirs.Count > 0 ? spawnDirs[0] : 1;
+            return ClampPos(new Vector2(h.x + d * vh * 0.4f, h.y - vh * 0.15f), vh);
         }
 
         void ClampCam()
@@ -718,14 +755,16 @@ namespace Cattas
 
         void SpawnCat()
         {
-            var spawn = spawnPoints[released % spawnPoints.Count];
+            int hatch = released % spawnPoints.Count;
+            var spawn = spawnPoints[hatch];
+            int dir = spawnDirs[hatch];
             var go = new GameObject("Cat " + (released + 1));
             go.transform.SetParent(levelRoot, false);
             var cat = go.AddComponent<Cat>();
             if (catFrames != null)
-                cat.Init(this, ground, spawn.x, spawn.y, catFrames[0], PaintedTints[released % PaintedTints.Length], catFrames);
+                cat.Init(this, ground, spawn.x, spawn.y, catFrames[0], PaintedTints[released % PaintedTints.Length], catFrames, dir);
             else
-                cat.Init(this, ground, spawn.x, spawn.y, catSprite, CatColours[released % CatColours.Length]);
+                cat.Init(this, ground, spawn.x, spawn.y, catSprite, CatColours[released % CatColours.Length], null, dir);
             cats.Add(cat);
             released++;
             Sfx.Play("pop", 0.7f);
@@ -774,6 +813,7 @@ namespace Cattas
                     Sfx.Play("hack", 0.8f, 0.1f);
                     break;
                 case FxKind.Zap:
+                    DisarmTrapsNear(x, y, 22);
                     Burst(x, y, dirt, 18, 120f, 80f, 2f, 0.8f, -300f);
                     Burst(x, y, new Color(1f, 0.95f, 0.4f), 12, 140f, 60f, 1.2f, 0.4f, 0f);
                     Shake(0.25f, 3f);
@@ -812,6 +852,11 @@ namespace Cattas
                     break;
                 case FxKind.Switch:
                     Sfx.Play("clunk", 1f, 0f);
+                    break;
+                case FxKind.Snap:
+                    Burst(x, y + 2, new Color(0.85f, 0.65f, 0.45f), 6, 40f, 60f, 1.2f, 0.5f, -250f);
+                    Shake(0.12f, 1.5f);
+                    Sfx.Play("snap", 1f, 0.05f);
                     break;
             }
         }
@@ -866,6 +911,7 @@ namespace Cattas
         public void SpawnSadCat(int x, int y, Sprite sprite, Color tint, FxKind kind)
         {
             if (kind == FxKind.Soak) SpawnGhostCat(x, y, sprite, new Color(0.6f, 0.75f, 1f, 1f), 0.9f, 25f, 1.6f);
+            else if (kind == FxKind.Snap) SpawnGhostCat(x, y, sprite, new Color(1f, 0.9f, 0.85f, 1f), 1.2f, 150f, 0.7f);  // boing!
             else SpawnGhostCat(x, y, sprite, new Color(0.35f, 0.3f, 0.3f, 1f), 1.3f, 70f, 1.2f);
         }
 

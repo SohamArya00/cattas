@@ -11,13 +11,15 @@ namespace Cattas
     // Each character is an 8x8 pixel block:
     //   .  air            #  dirt (can be dug)        X  stone (can't be dug)
     //   /  dirt ramp going up to the right             \  dirt ramp going up to the left
-    //   H  hatch (cats drop out of here)               E  exit (put ground under it!)
+    //   H  hatch (cats drop out of here, walking right)   h  hatch (cats walk LEFT)
+    //   E  exit (put ground under it!)
     // Something special placed in a level (hazards, switches, props, secrets).
     // In the level file:   object: <type> x0 y0 x1 y1 [extra...]     (game pixels, y measured UP from the bottom)
     //   water  x0 y0 x1 y1                    kittens that fall in get soaked (and go home to dry off)
     //   fire   x0 y0 x1 y1 <group>            singes kittens while lit
     //   switch x0 y0 x1 y1 <group> [art]      a kitten touching it turns off that group (e.g. the gas)
     //   prop   x0 y0 x1 y1 <art>              an object a kitten can knock over (secrets can hide behind it)
+    //   trap   x0 y0 x1 y1 <art>              a mouse trap: SNAP! (bridge over it, or ZAP it to disarm)
     //   secret x0 y0 x1 y1 <art> <Name...>    a hidden collectible
     public class LevelObject
     {
@@ -146,6 +148,7 @@ namespace Cattas
                     if (parts.Length > 6) o.art = parts[6];
                     break;
                 case "prop":
+                case "trap":
                     if (parts.Length > 5) o.art = parts[5];
                     break;
                 case "secret":
