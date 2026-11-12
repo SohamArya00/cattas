@@ -37,7 +37,14 @@ Each one goes on a **plain white background (or transparent), side view, the who
 | Golden toy mouse | Secret collectible: shiny gold, sparkly |
 | Golden fishbone | Secret collectible: shiny gold, sparkly |
 
-## 3. Kittens (later – this one is hard for AI)
+## 3. Kittens – paper doll (cut-out) style
+The game animates the kitten from **separate pieces**, so the artist paints each piece once:
+`body` (with chest ruff), `head` (with ears, face, whiskers), `tail`, `leg_front`, `leg_back`, all facing right on a transparent background.
+Each piece needs a known **joint point** (neck, tail base, shoulder, hip); these go in `kitten_rig.txt`. Leave a little overlap at the joints so nothing gaps when limbs swing.
+The current placeholder pieces (`tools/kitten_*_preview.png`) show the proportions and joints.
+**Skins** (dinosaur, dragon, other breeds...) = the same pieces repainted with the same joints, and every animation works automatically.
+
+### Older notes (frame-by-frame option)
 Animation needs **every frame to match exactly**, and AI isn't good at that yet. For now the game keeps its hand-coded HD kittens.
 
 **For the human artist:**

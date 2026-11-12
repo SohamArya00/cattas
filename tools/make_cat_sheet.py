@@ -145,16 +145,17 @@ def kitten(legs, tail_up=0.0, ears_up=0.0, mouth_open=False, sit=False, seed=0):
     img = Image.alpha_composite(img, wk)   # whiskers on top, not outlined
     return img.resize((FW, FH), Image.LANCZOS)
 
-frames = [
-    kitten([(13, 0), (18, -2), (27, -2), (32, 0)], seed=10),
-    kitten([(14, -2), (17, 0), (28, 0), (31, -2)], tail_up=0.3, seed=20),
-    kitten([(13, 0), (18, -2), (27, -2), (32, 0)], tail_up=0.6, seed=30),
-    kitten([(12, -2), (19, 0), (26, 0), (33, -2)], tail_up=0.3, seed=40),
-    kitten([(10, -6), (20, -6), (26, -6), (36, -6)], tail_up=1.0, ears_up=2, mouth_open=True, seed=50),   # falling
-    kitten([(15, 0), (17, 0), (29, 0), (31, 0)], tail_up=-0.2, sit=True, seed=60),                          # sitting / kneading
-]
-sheet = Image.new("RGBA", (FW * len(frames), FH), (0, 0, 0, 0))
-for i, f in enumerate(frames): sheet.paste(f, (i * FW, 0))
-sheet.save(os.path.join(OUT, "cat_sheet.bytes"), format="PNG", optimize=True)
-sheet.save(os.path.join(HERE, "cat_sheet_preview.png"))
-print("cat_sheet", sheet.size, os.path.getsize(os.path.join(OUT, "cat_sheet.bytes")) // 1024, "KB")
+if __name__ == "__main__":
+    frames = [
+        kitten([(13, 0), (18, -2), (27, -2), (32, 0)], seed=10),
+        kitten([(14, -2), (17, 0), (28, 0), (31, -2)], tail_up=0.3, seed=20),
+        kitten([(13, 0), (18, -2), (27, -2), (32, 0)], tail_up=0.6, seed=30),
+        kitten([(12, -2), (19, 0), (26, 0), (33, -2)], tail_up=0.3, seed=40),
+        kitten([(10, -6), (20, -6), (26, -6), (36, -6)], tail_up=1.0, ears_up=2, mouth_open=True, seed=50),   # falling
+        kitten([(15, 0), (17, 0), (29, 0), (31, 0)], tail_up=-0.2, sit=True, seed=60),                          # sitting / kneading
+    ]
+    sheet = Image.new("RGBA", (FW * len(frames), FH), (0, 0, 0, 0))
+    for i, f in enumerate(frames): sheet.paste(f, (i * FW, 0))
+    sheet.save(os.path.join(OUT, "cat_sheet.bytes"), format="PNG", optimize=True)
+    sheet.save(os.path.join(HERE, "cat_sheet_preview.png"))
+    print("cat_sheet", sheet.size, os.path.getsize(os.path.join(OUT, "cat_sheet.bytes")) // 1024, "KB")

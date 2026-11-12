@@ -1,0 +1,13 @@
+// Paper-doll kitten rig (made by tools/make_cat_parts.py)
+// ppu = picture pixels per level pixel
+// part <name> <picture> <pivotX> <pivotY> <x> <y> <order> <shade>
+//   pivot: the joint, in picture pixels from the picture's bottom-left
+//   x y:   where that joint sits, in level pixels from the kitten's feet (facing right)
+ppu 12.800
+part leg_back_far kitten_leg_back 20.0 46.4 -3.438 3.375 0 0.85
+part leg_front_far kitten_leg_front 20.0 46.4 0.938 3.375 0 0.85
+part tail kitten_tail 50.0 19.0 -3.594 4.594 1 1.0
+part body kitten_body 60.0 43.0 -0.625 4.125 2 1.0
+part leg_back_near kitten_leg_back 20.0 46.4 -1.875 3.375 3 1.0
+part leg_front_near kitten_leg_front 20.0 46.4 2.500 3.375 3 1.0
+part head kitten_head 38.0 22.0 1.719 5.531 4 1.0

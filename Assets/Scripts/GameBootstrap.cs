@@ -24,6 +24,7 @@ namespace Cattas
         DiggableGround ground;
         Sprite catSprite;
         Sprite[] catFrames;          // painted kitten animation (if the art exists)
+        public CatRig KittenRig { get; private set; }   // paper-doll kitten (preferred when available)
         Sprite particleSprite, flashSprite;
         Texture2D menuBackdrop;
         bool hasKitchenDemo;
@@ -123,6 +124,7 @@ namespace Cattas
                 int frameW = Mathf.RoundToInt(sheet.height * 1.2f);
                 catFrames = Art.SliceSheet(sheet, frameW, frameW / 15f, new Vector2(0.5f, 0.02f));
             }
+            KittenRig = CatRig.Load("kitten");
             particleSprite = SpriteMaker.Solid(1, 1, new Color32(255, 255, 255, 255), new Vector2(0.5f, 0.5f));
             flashSprite = SpriteMaker.Circle(14, new Color32(255, 240, 120, 255));
             menuBackdrop = Art.Load("kitchen_bg");
@@ -898,11 +900,11 @@ namespace Cattas
         void Shake(float time, float amount) { shakeTime = time; shakeAmount = amount; }
 
         // ZAP! A bright flash, and a frizzy cat that shoots off home to recover.
-        public void SpawnZap(int x, int y, Sprite sprite, Color tint)
+        public void SpawnZap(Cat cat)
         {
             var flash = new GameObject("Zap Flash");
             flash.transform.SetParent(levelRoot, false);
-            flash.transform.localPosition = new Vector3(x + 0.5f, y + 5f, 0f);
+            flash.transform.localPosition = new Vector3(cat.X + 0.5f, cat.Y + 5f, 0f);
             var fsr = flash.AddComponent<SpriteRenderer>();
             fsr.sprite = flashSprite;
             fsr.material = SpriteMaterial;
@@ -910,32 +912,45 @@ namespace Cattas
             var ffade = flash.AddComponent<FadeAway>();
             ffade.life = 0.3f;
             ffade.grow = 0.6f;
-            SpawnGhostCat(x, y, sprite, tint * 0.45f + new Color(0f, 0f, 0f, 0.55f), 1.5f, 60f, 1.2f);
+            SpawnGhostCat(cat, cat.Tint * 0.45f + new Color(0f, 0f, 0f, 0.55f), 1.5f, 60f, 1.2f, CatState.Falling);
         }
 
-        // A soaked or singed kitten heading home to recover.
-        public void SpawnSadCat(int x, int y, Sprite sprite, Color tint, FxKind kind)
+        // A soaked, singed or startled kitten heading home to recover.
+        public void SpawnSadCat(Cat cat, FxKind kind)
         {
-            if (kind == FxKind.Soak) SpawnGhostCat(x, y, sprite, new Color(0.6f, 0.75f, 1f, 1f), 0.9f, 25f, 1.6f);
-            else if (kind == FxKind.Snap) SpawnGhostCat(x, y, sprite, new Color(1f, 0.9f, 0.85f, 1f), 1.2f, 150f, 0.7f);  // boing!
-            else SpawnGhostCat(x, y, sprite, new Color(0.35f, 0.3f, 0.3f, 1f), 1.3f, 70f, 1.2f);
+            if (kind == FxKind.Soak) SpawnGhostCat(cat, new Color(0.6f, 0.75f, 1f, 1f), 0.9f, 25f, 1.6f, CatState.Splatted);
+            else if (kind == FxKind.Snap) SpawnGhostCat(cat, new Color(1f, 0.9f, 0.85f, 1f), 1.2f, 150f, 0.7f, CatState.Falling);  // boing!
+            else SpawnGhostCat(cat, new Color(0.35f, 0.3f, 0.3f, 1f), 1.3f, 70f, 1.2f, CatState.Zooming);                       // singed - off it runs
         }
 
-        void SpawnGhostCat(int x, int y, Sprite sprite, Color colour, float scale, float rise, float life)
+        void SpawnGhostCat(Cat cat, Color colour, float scale, float rise, float life, CatState pose)
         {
             if (levelRoot == null) return;
             var go = new GameObject("Leaving Cat");
             go.transform.SetParent(levelRoot, false);
-            go.transform.localPosition = new Vector3(x + 0.5f, y, 0f);
+            go.transform.localPosition = new Vector3(cat.X + 0.5f, cat.Y, 0f);
             go.transform.localScale = new Vector3(scale, scale, 1f);
+            if (KittenRig != null)
+            {
+                var puppet = CatPuppet.Create(go.transform, KittenRig, colour, 11);
+                puppet.state = pose;
+                puppet.flip = cat.Dir < 0;
+                var fade = puppet.gameObject.AddComponent<FadeGroup>();
+                fade.life = life;
+                fade.rise = 0f;
+                var mover = go.AddComponent<FadeGroupMover>();
+                mover.rise = rise;
+                mover.life = life;
+                return;
+            }
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
+            sr.sprite = cat.StillSprite != null ? cat.StillSprite : catSprite;
             sr.color = colour;
             sr.material = SpriteMaterial;
             sr.sortingOrder = 11;
-            var fade = go.AddComponent<FadeAway>();
-            fade.life = life;
-            fade.rise = rise;
+            var f = go.AddComponent<FadeAway>();
+            f.life = life;
+            f.rise = rise;
         }
 
         // Is there a Biscuit Baker just in front of this walking cat?

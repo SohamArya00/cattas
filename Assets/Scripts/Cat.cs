@@ -56,7 +56,11 @@ namespace Cattas
 
         GameBootstrap game;
         DiggableGround ground;
-        SpriteRenderer sr;
+        SpriteRenderer sr;     // single-picture kitten (used when there's no paper-doll rig)
+        CatPuppet puppet;      // paper-doll kitten (body, head, tail and legs animated separately)
+        public CatPuppet Puppet => puppet;
+        public Sprite StillSprite => sr != null ? sr.sprite : null;
+        public Color Tint => baseTint;
 
         // Animation: frames 0-3 walk cycle, 4 falling, 5 sitting. (null = single still picture)
         Sprite[] frames;
@@ -77,12 +81,19 @@ namespace Cattas
             y = startY;
             State = CatState.Falling;
 
-            sr = gameObject.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
-            sr.color = tint;
             baseTint = tint;
-            sr.material = GameBootstrap.SpriteMaterial;
-            sr.sortingOrder = 5;
+            if (game.KittenRig != null)
+            {
+                puppet = CatPuppet.Create(transform, game.KittenRig, tint, 5);
+            }
+            else
+            {
+                sr = gameObject.AddComponent<SpriteRenderer>();
+                sr.sprite = sprite;
+                sr.color = tint;
+                sr.material = GameBootstrap.SpriteMaterial;
+                sr.sortingOrder = 5;
+            }
             UpdateVisual();
             prevPos = curPos;
             transform.localPosition = curPos;
@@ -312,7 +323,7 @@ namespace Cattas
         {
             if (!IsActive) return;
             game.Fx(kind, x, y);
-            game.SpawnSadCat(x, y, sr.sprite, baseTint, kind);
+            game.SpawnSadCat(this, kind);
             State = CatState.Lost;
             game.OnCatLost(this);
             Destroy(gameObject);
@@ -378,7 +389,7 @@ namespace Cattas
         {
             game.Fx(FxKind.Zap, x, y + 1);
             ground.Carve(x, y + 1, ZapRadius);
-            game.SpawnZap(x, y, sr.sprite, baseTint);
+            game.SpawnZap(this);
             State = CatState.Zapped;
             game.OnCatLost(this);
             Destroy(gameObject);
@@ -507,7 +518,7 @@ namespace Cattas
                 game.Fx(FxKind.Splat, x, y);
                 game.OnCatLost(this);
                 transform.localScale = new Vector3(1.4f, 0.4f, 1f); // squish!
-                sr.color *= 0.6f;
+                SetColour(baseTint * 0.6f);
                 Destroy(gameObject, 1f);
             }
             else
@@ -535,7 +546,7 @@ namespace Cattas
             // Big jumps (e.g. turning sideways to climb) shouldn't glide
             if ((curPos - prevPos).sqrMagnitude > 64f) prevPos = curPos;
 
-            if (frames != null) sr.sprite = frames[PickFrame()];
+            if (frames != null && sr != null) sr.sprite = frames[PickFrame()];
             bool flip = dir < 0;
             if (State == CatState.Digging && wiggle) flip = !flip;
             if (State == CatState.Blocking)
@@ -570,11 +581,28 @@ namespace Cattas
                 // Cats with a Fluffchute or Curtain Climber are permanently a bit fluffier, so you can spot them
                 transform.localScale = (hasFluffchute || hasClimber) ? new Vector3(1.15f, 1.15f, 1f) : Vector3.one;
             }
-            sr.flipX = flip;
+            if (puppet != null)
+            {
+                // the puppet does its own leg-swinging, so it only needs to know what we're up to
+                puppet.flip = dir < 0;
+                puppet.state = State;
+                puppet.floating = IsFloating;
+                puppet.hacking = State == CatState.Building && bridgeStepsLeft == 0 && hackTimer > TicksPerHairball - 8;
+                if (State == CatState.Blocking && (kneadTimer / 20) % 2 == 1) puppet.flip = !puppet.flip;
+                if (State == CatState.Blocking || State == CatState.Building || State == CatState.Scratching || State == CatState.Digging)
+                    transform.localScale = Vector3.one; // the puppet animates these itself
+            }
+            else sr.flipX = flip;
 
             // Sparks! Flicker yellow while chewing a cable
             if (fuseTicks > 0)
-                sr.color = (fuseTicks / 3) % 2 == 0 ? Color.Lerp(baseTint, Color.yellow, 0.7f) : baseTint;
+                SetColour((fuseTicks / 3) % 2 == 0 ? Color.Lerp(baseTint, Color.yellow, 0.7f) : baseTint);
+        }
+
+        void SetColour(Color c)
+        {
+            if (puppet != null) puppet.SetColor(c);
+            else if (sr != null) sr.color = c;
         }
 
         int PickFrame()

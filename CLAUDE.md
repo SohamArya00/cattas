@@ -16,4 +16,4 @@ Design doc: `docs/DESIGN.md`. Read it at the start of each session.
 - Never use the name "Lemmings" or any of its assets in the game.
 - Levels live in `Assets/Resources/Levels/levelNN.txt` (format in README). After changing cat rules in `Cat.cs`, mirror them in `tools/sim.py` and run `python3 tools/sim.py` to re-check every level is still solvable.
 - Before pushing C# changes, run `bash tools/check_compile.sh` (needs `apt-get install -y mono-mcs`); it compiles the scripts against Unity's reference DLLs.
-- Painted art is drawn by `tools/make_kitchen_art.py` / `tools/make_cat_sheet.py`; watch for overhangs in solid art (rounded bottom corners make climbers bonk).
+- Painted art is drawn by `tools/make_kitchen_art.py`, `tools/make_cat_sheet.py` (fallback frames) and `tools/make_cat_parts.py` (paper-doll kitten pieces + rig); watch for overhangs in solid art (rounded bottom corners make climbers bonk).

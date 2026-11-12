@@ -44,7 +44,8 @@ Painted art lives in `Assets/Resources/Art/`. Save images as **PNG, then rename 
 |---|---|---|
 | `<name>_bg` | Background picture behind everything | 2560×1440 (4× the 640×360 level) |
 | `<name>_fg` | The solid ground/furniture. **Transparent = air**; anything opaque is walkable/diggable | 2560×1440, PNG with transparency |
-| `cat_sheet` | Kitten animation: 6 frames side by side, each 48×40 — 4 walk frames, 1 falling, 1 sitting | 288×40 |
+| `kitten_body`, `kitten_head`, `kitten_tail`, `kitten_leg_front`, `kitten_leg_back` + `kitten_rig.txt` | **Paper-doll kitten**: separate pieces joined at pivots and animated by code (`CatPuppet.cs`). The rig file lists each piece's joint. A new skin = new pieces with the same joints | any size |
+| `cat_sheet` | Fallback kitten animation (used if there's no rig): 6 frames side by side (6:5 each) — 4 walk, 1 falling, 1 sitting | e.g. 1152×160 |
 
 Hook them up in a level file with `background: <name>_bg`, `foreground: <name>_fg`, and `markers: off` (hides the plain hatch/exit boxes when the art draws its own). In painted levels the text map only marks `H` (hatch), `E` (exit) and `X` (stone that can't be dug).
 Placeholder art is drawn by `tools/make_kitchen_art.py`; previews are in `tools/*_preview.png`.
@@ -91,6 +92,7 @@ Handy numbers: cats can step up 6px (less than one block — use ramps!), and fa
 | `Assets/Scripts/Effects.cs` | Simple fade-out effects (ZAP flash, frizzy cat) |
 | `Assets/Scripts/Particle.cs` | Dust, debris and sparkle particles |
 | `Assets/Scripts/Sfx.cs` | Placeholder sound effects generated in code |
+| `Assets/Scripts/CatPuppet.cs` | Paper-doll kitten: loads the rig and animates walk, gallop, climb, dig, knead, fall... |
 | `Assets/Scripts/Art.cs` | Loads painted art and sprite sheets; rounded UI boxes |
 
 See [`docs/DESIGN.md`](docs/DESIGN.md) for the full game design and roadmap.
