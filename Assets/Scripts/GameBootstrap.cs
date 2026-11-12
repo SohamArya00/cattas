@@ -115,8 +115,14 @@ namespace Cattas
         {
             SetupCamera();
             catSprite = SpriteMaker.FromArt(CatArt, new Vector2(0.5f, 0f));
-            // Painted kitten: 48x40 frames at 4x detail. Drawn slightly bigger than its 12x10 "body" so it reads well.
-            catFrames = Art.SliceSheet(Art.Load("cat_sheet"), 48, 4f / 1.25f, new Vector2(0.5f, 0.02f));
+            // Painted kitten sheet: 6 frames side by side, each 1.2x as wide as it is tall (any resolution).
+            // Each frame is shown 15 level-pixels wide - a bit bigger than the kitten's 12x10 "body" so it reads well.
+            var sheet = Art.Load("cat_sheet");
+            if (sheet != null)
+            {
+                int frameW = Mathf.RoundToInt(sheet.height * 1.2f);
+                catFrames = Art.SliceSheet(sheet, frameW, frameW / 15f, new Vector2(0.5f, 0.02f));
+            }
             particleSprite = SpriteMaker.Solid(1, 1, new Color32(255, 255, 255, 255), new Vector2(0.5f, 0.5f));
             flashSprite = SpriteMaker.Circle(14, new Color32(255, 240, 120, 255));
             menuBackdrop = Art.Load("kitchen_bg");
@@ -1256,29 +1262,41 @@ namespace Cattas
             GUI.Label(new Rect(pad * 2, pad * 1.3f + lineH, panelW, lineH),
                 $"Out {released}/{level.cats}   Home {saved} (need {level.need})   Lost {lost}   Time {secs / 60}:{secs % 60:00}{secretText}", darkSmall);
 
-            // Top-right: speed, zoom, restart, levels
-            float bw = fs * 7;
+            // Top-right: speed and zoom (each labelled, with matching - / + buttons), restart, levels
             if (mode == GameMode.Playing)
             {
-                float sw = fs * 10f, sx = Screen.width - pad - sw;
-                GUI.Box(new Rect(sx - pad * 0.5f, pad * 0.5f, sw + pad, lineH * 1.9f), GUIContent.none, panel);
-                GUI.Label(new Rect(sx, pad * 0.5f, sw, lineH), $"Speed {Mathf.RoundToInt(speedPercent)}%",
-                    new GUIStyle(darkSmall) { alignment = TextAnchor.MiddleCenter });
-                speedPercent = Mathf.Round(GUI.HorizontalSlider(new Rect(sx, pad * 0.5f + lineH, sw, lineH * 0.7f),
-                    speedPercent, minSpeedPercent, 100f));
+                float pw = fs * 13f, px = Screen.width - pad - pw;
+                float rowH = lineH * 1.15f, sb = fs * 2.6f;
+                GUI.Box(new Rect(px, pad, pw, rowH * 2f + pad * 1.2f), GUIContent.none, panel);
+                var rowLabel = new GUIStyle(darkLabel) { alignment = TextAnchor.MiddleLeft, fontSize = Mathf.RoundToInt(fs * 0.85f) };
 
-                float by = pad + lineH * 2f;
-                float zb = (bw - pad * 0.5f) / 2f;
-                if (GUI.Button(new Rect(Screen.width - pad - bw, by, zb, lineH), "-", button))
+                // Speed row
+                float ry = pad + pad * 0.6f;
+                GUI.Label(new Rect(px + pad, ry, pw - sb * 2 - pad * 2, rowH), $"Speed {Mathf.RoundToInt(speedPercent)}%", rowLabel);
+                GUI.enabled = speedPercent > minSpeedPercent;
+                if (GUI.Button(new Rect(px + pw - pad - sb * 2 - pad * 0.4f, ry + 1, sb, rowH - 2), "-", button))
+                    speedPercent = Mathf.Max(minSpeedPercent, speedPercent - 10f);
+                GUI.enabled = speedPercent < 100f;
+                if (GUI.Button(new Rect(px + pw - pad - sb, ry + 1, sb, rowH - 2), "+", button))
+                    speedPercent = Mathf.Min(100f, speedPercent + 10f);
+                GUI.enabled = true;
+
+                // Zoom row
+                ry += rowH;
+                int zoomPct = Mathf.RoundToInt(MaxView / viewH * 100f);
+                GUI.Label(new Rect(px + pad, ry, pw - sb * 2 - pad * 2, rowH), $"Zoom {zoomPct}%", rowLabel);
+                if (GUI.Button(new Rect(px + pw - pad - sb * 2 - pad * 0.4f, ry + 1, sb, rowH - 2), "-", button))
                     ZoomAt(1.25f, new Vector2(Screen.width / 2f, Screen.height / 2f));
-                if (GUI.Button(new Rect(Screen.width - pad - zb, by, zb, lineH), "+", button))
+                if (GUI.Button(new Rect(px + pw - pad - sb, ry + 1, sb, rowH - 2), "+", button))
                     ZoomAt(0.8f, new Vector2(Screen.width / 2f, Screen.height / 2f));
-                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 1.2f, bw, lineH), "Restart", button))
+
+                float bw = fs * 7f, by = pad * 2.6f + rowH * 2f;
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by, bw, lineH), "Restart", button))
                 {
                     BuildLevel(false);
                     return;
                 }
-                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 2.4f, bw, lineH), "Levels", button))
+                if (GUI.Button(new Rect(Screen.width - pad - bw, by + lineH * 1.2f, bw, lineH), "Levels", button))
                 {
                     ClearLevel();
                     mode = GameMode.Menu;

@@ -9,6 +9,7 @@ Layout (game pixels):
   right worktop 784-880 top 200 on legs (open underneath) | cat bed (exit) on the floor ~924
 """
 import os, random, math
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 HERE = os.path.dirname(__file__)
@@ -22,8 +23,10 @@ def box(x0, y0, x1, y1, h=IH):
     return [x0 * S, h - y1 * S, x1 * S, h - y0 * S]
 def pt(x, y, h=IH): return (x * S, h - y * S)
 
-def save(img, name, preview=True):
-    img = img.resize((img.width // SS, img.height // SS), Image.LANCZOS)
+def shrink(img): return img.resize((img.width // SS, img.height // SS), Image.LANCZOS)
+
+def save(img, name, preview=True, shrunk=False):
+    if not shrunk: img = shrink(img)
     path = os.path.join(OUT, name + ".bytes")
     img.save(path, format="PNG", optimize=True)
     if preview: img.save(os.path.join(HERE, name + "_preview.png"))
@@ -167,7 +170,7 @@ P.pie(866, 34, 888, 50, 180, 360, (240, 150, 160, 255)); P.ell(877, 42, 11, 2, (
 # soft shadows for depth
 bg = soft_shadow(bg, [(0, 200, 560, 208), (664, 200, 960, 208), (664, 236, 676, 480), (30, 296, 215, 306),
                       (205, 248, 300, 252), (560, 40, 664, 62), (664, 40, 784, 50)])
-save(bg, "kitchen_bg")
+BG = shrink(bg)   # finished together with the foreground below
 
 # =============================================================== FOREGROUND (solid)
 fg = Image.new("RGBA", (IW, IH), (0, 0, 0, 0)); P = Pen(fg, GH)
@@ -226,7 +229,76 @@ P.rect(664, 186, 784, 200, (70, 70, 76, 255))
 for bx in (696, 752): P.rect(bx - 16, 199, bx + 16, 201, (40, 40, 44, 255))
 # right worktop (on legs - the legs are background)
 worktop(784, 880)
-save(fg, "kitchen_fg")
+FG = shrink(fg)
+
+# =============================================================== LIGHTING + FINISH (the "painted photo" look)
+def blur(a, r):
+    im = Image.fromarray(np.clip(a * 255, 0, 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(r))
+    return np.asarray(im, np.float32) / 255.0
+
+def bevel(rgb, height, strength, radius):
+    """Soft 3D shading: anything 'raised' gets lit from the window (top-left) and shaded bottom-right."""
+    h = blur(height, radius)
+    gy, gx = np.gradient(h)
+    shade = 1.0 + strength * (gx + gy) * radius
+    return rgb * np.clip(shade, 0.7, 1.35)[..., None]
+
+def finish(bg_img, fg_img):
+    bg = np.asarray(bg_img, np.float32) / 255.0
+    fg = np.asarray(fg_img, np.float32) / 255.0
+    Hh, Ww = bg.shape[:2]
+    ys, xs = np.mgrid[0:Hh, 0:Ww].astype(np.float32)
+    lum = lambda a: a[..., 0] * 0.3 + a[..., 1] * 0.59 + a[..., 2] * 0.11
+    fa = fg[..., 3]
+
+    # 1. soft 3D shading on every painted shape
+    bg_rgb = bevel(bg[..., :3], lum(bg), 1.6, 3)
+    fg_rgb = bevel(fg[..., :3], fa * 0.6 + lum(fg) * 0.4, 2.2, 3)
+    fg_rgb = bevel(fg_rgb, fa, 1.2, 9)                         # rounder edges on the big furniture shapes
+
+    # 2. furniture casts soft shadows onto the wall behind it
+    sh = blur(fa, 14)
+    sh = np.roll(np.roll(sh, 14, axis=1), 18, axis=0)
+    bg_rgb *= (1.0 - 0.38 * sh)[..., None]
+
+    # 3. ambient occlusion: darker where the wall meets the floor and the ceiling
+    floor_y = Hh - 40 * K
+    ao = np.exp(-np.clip(floor_y - ys, 0, None) / (18 * K)) * 0.25 + np.exp(-ys / (14 * K)) * 0.12
+    bg_rgb *= (1.0 - ao)[..., None]
+
+    # 4. sunbeams from the window across the wall
+    rays = Image.new("L", (Ww, Hh), 0); rd = ImageDraw.Draw(rays)
+    wx0, wx1, wy = 44 * K, 198 * K, Hh - 484 * K
+    for k, (a, b) in enumerate([(0.0, 0.18), (0.3, 0.5), (0.62, 0.8)]):
+        top_l = wx0 + (wx1 - wx0) * a; top_r = wx0 + (wx1 - wx0) * b
+        rd.polygon([(top_l, wy), (top_r, wy), (top_r + 900 * K / 3, Hh), (top_l + 760 * K / 3, Hh)], fill=80 - k * 15)
+    rays = np.asarray(rays.filter(ImageFilter.GaussianBlur(26)), np.float32) / 255.0
+    warm = np.array([1.0, 0.93, 0.78], np.float32)
+
+    # 5. warm light pouring in from the window, gently falling off across the room
+    wxc, wyc = 121 * K, Hh - 400 * K
+    d2 = ((xs - wxc) ** 2 + (ys - wyc) ** 2) / (Ww * 0.55) ** 2
+    glow = np.exp(-d2)
+    room = 1.04 - 0.10 * (ys / Hh)
+    vign = 1.0 - 0.22 * (((xs / Ww - 0.5) * 1.6) ** 2 + ((ys / Hh - 0.5) * 1.3) ** 2)
+
+    def light(rgb, extra_rays):
+        rgb = rgb * (room * vign)[..., None]
+        rgb = rgb + warm * (0.14 * glow)[..., None] * rgb
+        if extra_rays: rgb = rgb + warm * (0.22 * rays)[..., None]
+        rgb = rgb * np.array([1.03, 1.0, 0.95], np.float32)         # warm colour grade
+        rgb = rgb + np.random.default_rng(5).normal(0, 0.010, rgb.shape[:2])[..., None]   # fine film grain
+        return np.clip(rgb, 0, 1)
+
+    bg_rgb = light(bg_rgb, True)
+    fg_rgb = light(fg_rgb, True)
+    bg_out = Image.fromarray((np.dstack([bg_rgb, bg[..., 3]]) * 255).astype(np.uint8), "RGBA")
+    fg_out = Image.fromarray((np.dstack([fg_rgb, fa]) * 255).astype(np.uint8), "RGBA")
+    return bg_out, fg_out
+
+BG, FG = finish(BG, FG)
+save(BG, "kitchen_bg", shrunk=True)
+save(FG, "kitchen_fg", shrunk=True)
 
 # =============================================================== PROPS + SECRETS (small separate pictures)
 def prop(name, w, h, draw):
