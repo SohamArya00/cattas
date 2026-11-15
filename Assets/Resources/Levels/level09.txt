@@ -6,6 +6,7 @@ cats: 10
 need: 5
 rate: 1.5
 time: 300
+exit: litter
 traits: CurtainClimber=10, Fluffchute=10
 map:
 ................................................................................

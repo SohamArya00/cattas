@@ -7,6 +7,9 @@ A modern, cat-themed take on the classic "guide the walkers to the exit" puzzle 
 
 ## Story
 The Cattas are **your cat's kittens**, playfully trying to find their way back to you. Their adventure takes them through every room of the house and beyond. Finishing level 100 plays a closing cutscene: the game is complete (and NG+ opens).
+- **Main character / mother cat:** Codi's cat, a seal-point Persian Chinchilla Ragdoll (the current placeholder art). She is the player's avatar.
+- **Levels 1–5:** the kittens find their way to **mother cat for milk** (exit = mum and her milk bowl). Teaches the first **2 traits**, with a little story between levels.
+- **Levels 6–10:** beginner tasks. **Grumpy Uncle Catta** (the first boss) arrives in the story, and the goal is the **litter basket**. Level 10 is his boss level.
 
 ## Core loop
 Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Traits** to individual cats to reshape the level and get enough cats home before time runs out.
@@ -48,6 +51,13 @@ Cats drop from a hatch and walk forward mindlessly. The player assigns **Cat Tra
 | 9 | Athletes | Trait combos (climb + float) |
 | 10 | Graduation Day | Everything, wide scrolling level |
 
+## Big pictures, small play areas (NG0 vs NG+)
+Each level is one **big painted picture** that goes higher, lower and wider than you can use at first.
+- In **NG0** only a **play area** (a box inside the picture, set with `area:` in the level file) is used. The camera and kittens stay inside it.
+- The rest of the picture is shown **dimmed** as an "NG+ area". You can see it when you zoom out in the look-around mode, as a teaser.
+- In **NG+**, super traits, golden traits, clothes and skins open up those areas: new routes, secrets and tasks in the same picture.
+- Some objects in the picture work in NG0; most of the extras need NG+.
+
 ## Worlds (where levels take place)
 Levels are set in and around the home, seen at cat height:
 bathroom, kitchen, living room, bedroom, laundry, backyard, garden shed, the car, the vet's...
@@ -61,7 +71,8 @@ Each area has objects cats can trigger, opening extra solutions:
 - (more per area: fridge door, washing machine, ceiling fan, toaster, garage door...)
 
 ## Bosses (every 10th level)
-A **scruffy, funny-looking alley cat** guards the way (proposed: grumpy and comically scruffy rather than starving, so it stays light-hearted). Get the kittens past him by going around him, or by finding the secret that chases him off:
+**Grumpy Uncle Catta**, a scruffy, funny-looking old tom, guards the way (grumpy and comically scruffy rather than starving, so it stays light-hearted).
+**Boss fight idea:** send Cable Chewers at him: **10 ZAPs defeats him**, but each must go off at the right moment (e.g. when he's stomping past, or standing on the right spot). Get the kittens past him by going around him, or by finding the secret that chases him off:
 - Turn on the hose tap – the sprinkler soaks him and he runs off
 - Let the neighbour's dog out
 - Drop something on his tail / scare him off (cartoon-style, no real harm)
@@ -79,6 +90,7 @@ When used, the camera zooms in on the catta as it gets ready, then the move play
 | **Teleport** | Pops from one spot to another |
 | **Circus Cannon** | Fired through a flaming hoop |
 | **Spicy Food** 🌶️ | Eats something spicy, flame-farts and flies around randomly |
+| **Bring the Fallen Home** | Every lost kitten and every Biscuit Baker bounces home safely |
 | **Meme moves** | Topical/meme-inspired moves – original jokes only, no copyrighted memes |
 
 ## Objectives & rewards (per level)
@@ -92,7 +104,9 @@ Rewards: trophies, cosmetics, bonus levels.
 ## Cosmetics & Catta creator
 - Easter eggs and side quests unlock cat appearances: coat colours, hats, and full transformations (dinosaurs, dragons, ...). Fully customisable cattas.
 - **Catta creator:** build your cat from several cat types/parts (breeds, coat patterns, eyes, accessories). The kittens are generated to match the parent; both shown on the profile screen.
-- **Stretch goal – your own cat:** upload a photo of your real cat and have it turned into the Cattas art style, with matching kittens. Needs research: AI cost/servers, photo privacy, Steam's AI-content disclosure, and offline play. The part-based creator ships first; photo version later.
+- **Breed builder:** build your mother cat from standard breeds, or mix them (e.g. Ragdoll + Chinchilla + Persian). The kittens are generated to match.
+- **Your own cat:** take photos of your real cat (**front and side, sitting and standing**) and the game turns them into Cattas-style paper-doll pieces for the mother cat and her kittens. Needs research: AI cost/servers, photo privacy, and Steam's rules for **live-generated AI content** (guardrails required). The breed builder ships first; the photo version later.
+- The paper-doll kitten (body, head, tail, legs) is what makes this work: a new cat is just new pieces with the same joints.
 (Joke idea parked: a "drunk lads walking home from the pub" skin pack.)
 
 ## Home hub
@@ -108,6 +122,11 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - Soham – code
 - Artist – TBD name
 - Music & SFX – TBD name
+
+## Done this session
+- Play area inside a big picture (`area:`), with the NG+ area dimmed and labelled in look-around mode
+- Mother cat exit (levels 1–5) and litter tray exit (levels 6–10)
+- Trait activation "ta-da": the kitten pops and looks up, sparkles, the trait name floats up
 
 ## Next session (agreed plan)
 1. **Trait activation animations**: a short "ta-da" moment when a trait is given to a kitten (e.g. puff of fur and a sparkle, the kitten looks up, a little icon pops over its head), plus richer puppet poses per trait.

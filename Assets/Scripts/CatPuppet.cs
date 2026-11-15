@@ -64,6 +64,10 @@ namespace Cattas
         // Set by the Cat every game step
         [HideInInspector] public CatState state = CatState.Falling;
         [HideInInspector] public bool flip, floating, hacking;
+        [HideInInspector] public bool mother;    // the big mother cat at the exit: sits and watches
+        float pop;                              // "ta-da" bounce when given a trait (or when mum is happy)
+
+        public void Pop() { pop = 1f; }
 
         Transform rigRoot;                       // tilts and bobs the whole body
         readonly Dictionary<string, Transform> bones = new Dictionary<string, Transform>();
@@ -145,6 +149,7 @@ namespace Cattas
             if (moved > 4f) moved = 0f; // a jump (e.g. starting to climb) isn't a step
 
             hackAmount = Mathf.MoveTowards(hackAmount, hacking ? 1f : 0f, dt * 10f);
+            pop = Mathf.MoveTowards(pop, 0f, dt * 3.5f);
 
             float amp = 0f, bob = 0f, tilt = 0f, head = 0f;
             float tail = Mathf.Sin(t * 3f) * 7f;
@@ -215,6 +220,14 @@ namespace Cattas
                     break;
             }
 
+            if (mother)
+            {
+                // Mum sits tall, tail swishing, watching for her kittens
+                tilt = 10f; backNear = backFar = 62f; frontNear = frontFar = -4f;
+                frontNearOff = frontFarOff = Vector2.zero;
+                head = Mathf.Sin(t * 0.7f) * 6f + 4f; tail = 15f + Mathf.Sin(t * 1.5f) * 18f; bob = 0f; gait = false;
+            }
+
             if (gait)
             {
                 // diagonal pairs move together, like a real trotting cat
@@ -224,7 +237,9 @@ namespace Cattas
                 frontFar = Mathf.Sin(phase + Mathf.PI) * amp;
             }
 
-            transform.localScale = new Vector3(flip ? -1f : 1f, 1f, 1f);
+            float s = 1f + 0.3f * Mathf.Sin(pop * Mathf.PI) ;
+            head += pop * 18f;   // looks up!
+            transform.localScale = new Vector3((flip ? -1f : 1f) * s, s, 1f);
             rigRoot.localRotation = Quaternion.Euler(0f, 0f, tilt);
             rigRoot.localPosition = new Vector3(0f, bob, 0f);
             Rot("leg_back_far", backFar);

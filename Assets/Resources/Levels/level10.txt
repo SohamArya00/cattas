@@ -6,6 +6,7 @@ cats: 15
 need: 10
 rate: 1.5
 time: 420
+exit: litter
 traits: LitterLord=2, Fluffchute=4, BiscuitBaker=2, Scratcher=2, CurtainClimber=2, Zoomies=2, CableChewer=2, HairballBridge=2
 map:
 ........................................................................................................................

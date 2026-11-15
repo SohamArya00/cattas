@@ -30,6 +30,7 @@ namespace Cattas
         bool hasKitchenDemo;
         readonly List<Texture2D> levelTextures = new List<Texture2D>(); // freed when the level is cleared
         Texture2D levelBackground;
+        CatPuppet motherCat;          // the mother cat waiting at the exit (levels 1-5)
 
         readonly List<Cat> cats = new List<Cat>();
         readonly List<Vector2Int> spawnPoints = new List<Vector2Int>();
@@ -214,9 +215,11 @@ namespace Cattas
             if (levelRoot != null) Destroy(levelRoot.gameObject);
             levelRoot = null;
             ground = null;
+            motherCat = null;
             cats.Clear();
             things.Clear();
             popups.Clear();
+            worldPopups.Clear();
         }
 
         // preview = start zoomed out so the player can look around first
@@ -266,6 +269,8 @@ namespace Cattas
             groundObj.transform.SetParent(levelRoot, false);
             ground = groundObj.AddComponent<DiggableGround>();
             ground.Init(levelWidth, levelHeight, artScale);
+            playArea = level.HasArea ? level.area : new RectInt(0, 0, levelWidth, levelHeight);
+            ground.SetPlayArea(playArea);
             if (painted)
             {
                 ground.ApplyArt(fgArt);
@@ -300,6 +305,7 @@ namespace Cattas
             ground.FinishPainting();
 
             if (spawnPoints.Count == 0) AddHatch(levelWidth / 4, levelHeight - 40);
+            if (level.HasArea) DimOutsideArea();
 
             BuildThings();
 
@@ -313,12 +319,28 @@ namespace Cattas
             }
             else
             {
+                mode = GameMode.Playing;
                 viewH = PlayView;
                 camPos = HatchView(viewH);
-                mode = GameMode.Playing;
             }
             ClampCam();
             ApplyCamera();
+        }
+
+        // The parts of the picture outside the play area are shown, but dimmed: they're for NG+ later.
+        void DimOutsideArea()
+        {
+            var a = playArea;
+            var dim = new Color32(30, 22, 20, 150);
+            if (a.yMin > 0) MakeBox("NG+ area", new Vector2Int(0, 0), levelWidth, a.yMin, dim, 30);
+            if (a.yMax < levelHeight) MakeBox("NG+ area", new Vector2Int(0, a.yMax), levelWidth, levelHeight - a.yMax, dim, 30);
+            if (a.xMin > 0) MakeBox("NG+ area", new Vector2Int(0, a.yMin), a.xMin, a.height, dim, 30);
+            if (a.xMax < levelWidth) MakeBox("NG+ area", new Vector2Int(a.xMax, a.yMin), levelWidth - a.xMax, a.height, dim, 30);
+            var edge = new Color32(255, 236, 170, 200);
+            MakeBox("Play area edge", new Vector2Int(a.xMin - 1, a.yMin), 1, a.height, edge, 31);
+            MakeBox("Play area edge", new Vector2Int(a.xMax, a.yMin), 1, a.height, edge, 31);
+            MakeBox("Play area edge", new Vector2Int(a.xMin - 1, a.yMax), a.width + 2, 1, edge, 31);
+            if (a.yMin > 0) MakeBox("Play area edge", new Vector2Int(a.xMin - 1, a.yMin - 1), a.width + 2, 1, edge, 31);
         }
 
         void AddHatch(int centreX, int bottomY, int dir = 1)
@@ -330,7 +352,28 @@ namespace Cattas
 
         void AddExit(int centreX, int floorY)
         {
-            if (level.showMarkers)
+            if (level.exitStyle == "mother" && KittenRig != null)
+            {
+                // Mum! She sits beside her milk bowl, facing the way her kittens will come from.
+                int hatchX = spawnPoints.Count > 0 ? spawnPoints[0].x : 0;
+                int away = hatchX <= centreX ? 1 : -1;
+                var mum = new GameObject("Mother Cat");
+                mum.transform.SetParent(levelRoot, false);
+                mum.transform.localPosition = new Vector3(centreX + away * 13f, floorY, 0f);
+                mum.transform.localScale = new Vector3(2.3f, 2.3f, 1f);
+                motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 4);
+                motherCat.mother = true;
+                motherCat.flip = away > 0;
+                MakeBox("Milk bowl", new Vector2Int(centreX - 6, floorY), 13, 4, new Color32(238, 150, 165, 255), 6);
+                MakeBox("Milk", new Vector2Int(centreX - 5, floorY + 3), 11, 2, new Color32(255, 252, 245, 255), 7);
+            }
+            else if (level.exitStyle == "litter")
+            {
+                MakeBox("Litter tray", new Vector2Int(centreX - 13, floorY), 26, 7, new Color32(140, 176, 210, 255), 1);
+                MakeBox("Litter tray rim", new Vector2Int(centreX - 14, floorY + 6), 28, 2, new Color32(110, 146, 185, 255), 2);
+                MakeBox("Litter", new Vector2Int(centreX - 11, floorY + 5), 22, 2, new Color32(226, 208, 170, 255), 3);
+            }
+            else if (level.showMarkers)
             {
                 MakeBox("Exit House", new Vector2Int(centreX - 10, floorY), 20, 26, new Color32(150, 90, 50, 255), 1);
                 MakeBox("Exit Door", new Vector2Int(centreX - 5, floorY), 10, 14, new Color32(40, 25, 20, 255), 2);
@@ -601,6 +644,27 @@ namespace Cattas
         readonly List<PopupMsg> popups = new List<PopupMsg>();
         void Popup(string text) => popups.Add(new PopupMsg { text = text, time = Time.unscaledTime });
 
+        // Little labels that float up from a spot in the level (e.g. the trait you just gave a kitten)
+        struct WorldPopup { public string text; public Vector2 pos; public float time; }
+        readonly List<WorldPopup> worldPopups = new List<WorldPopup>();
+
+        void DrawWorldPopups()
+        {
+            for (int i = worldPopups.Count - 1; i >= 0; i--)
+                if (Time.unscaledTime - worldPopups[i].time > 1.3f) worldPopups.RemoveAt(i);
+            var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 0.9f) };
+            foreach (var p in worldPopups)
+            {
+                float age = Time.unscaledTime - p.time;
+                Vector3 sp = cam.WorldToScreenPoint(new Vector3(p.pos.x, p.pos.y + age * 12f, 0f));
+                var old = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(1.3f - age));
+                st.normal.textColor = new Color(1f, 0.95f, 0.6f);
+                ShadowLabel(new Rect(sp.x - fs * 6, Screen.height - sp.y - fs, fs * 12, fs * 2), p.text, st);
+                GUI.color = old;
+            }
+        }
+
         // ---------- Camera ----------
         Vector2 camPos;           // what the camera is looking at (centre), in level pixels
         float viewH = 360f;       // how much of the level is visible, top to bottom
@@ -610,14 +674,31 @@ namespace Cattas
         float shakeTime, shakeAmount;
         const float BottomUI = 0.13f; // part of the screen covered by the trait bar
 
+        RectInt playArea;         // NG0 play area (the whole level unless the level file sets "area:")
+
+        // While looking around you can see the whole picture; while playing the camera stays on the play area.
+        Rect CamBounds => mode == GameMode.Preview || mode == GameMode.Menu
+            ? new Rect(0, 0, levelWidth, levelHeight)
+            : new Rect(playArea.x, playArea.y, playArea.width, playArea.height);
+        Rect AreaRect => new Rect(playArea.x, playArea.y, playArea.width, playArea.height);
+
+        float MaxViewFor(Rect b) => Mathf.Max(b.height / (1f - BottomUI) * 1.02f, b.width / cam.aspect);
         float MinView => 140f;
-        float MaxView => Mathf.Max(levelHeight / (1f - BottomUI) * 1.02f, levelWidth / cam.aspect);
-        float PlayView => levelHeight <= 400 ? MaxView : Mathf.Min(MaxView, 250f);
+        float MaxView => MaxViewFor(CamBounds);
+        float PlayView
+        {
+            get
+            {
+                var b = AreaRect;
+                float mv = MaxViewFor(b);
+                return b.height <= 400 ? mv : Mathf.Min(mv, 250f);
+            }
+        }
 
         // Where the camera looks when play starts: the hatch, a little ahead of it
         Vector2 HatchView(float vh)
         {
-            var h = spawnPoints.Count > 0 ? spawnPoints[0] : new Vector2Int(levelWidth / 2, levelHeight / 2);
+            var h = spawnPoints.Count > 0 ? spawnPoints[0] : new Vector2Int((int)AreaRect.center.x, (int)AreaRect.center.y);
             int d = spawnDirs.Count > 0 ? spawnDirs[0] : 1;
             return ClampPos(new Vector2(h.x + d * vh * 0.4f, h.y - vh * 0.15f), vh);
         }
@@ -631,11 +712,12 @@ namespace Cattas
         // Keep the view inside the level (with room at the bottom for the trait bar)
         Vector2 ClampPos(Vector2 p, float vh)
         {
+            var b = CamBounds;
             float halfH = vh / 2f, halfW = halfH * cam.aspect;
-            if (levelWidth <= halfW * 2f) p.x = levelWidth / 2f;
-            else p.x = Mathf.Clamp(p.x, halfW, levelWidth - halfW);
-            float minY = halfH - vh * BottomUI;
-            float maxY = levelHeight + vh * 0.02f - halfH;
+            if (b.width <= halfW * 2f) p.x = b.center.x;
+            else p.x = Mathf.Clamp(p.x, b.xMin + halfW, b.xMax - halfW);
+            float minY = b.yMin + halfH - vh * BottomUI;
+            float maxY = b.yMax + vh * 0.02f - halfH;
             p.y = minY > maxY ? (minY + maxY) / 2f : Mathf.Clamp(p.y, minY, maxY);
             return p;
         }
@@ -709,8 +791,11 @@ namespace Cattas
                 float k = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
                 viewH = Mathf.Lerp(viewH, PlayView, k);
                 camPos = Vector2.Lerp(camPos, flyTarget, k);
-                ClampCam();
-                if (Mathf.Abs(viewH - PlayView) < 0.5f && (camPos - flyTarget).sqrMagnitude < 1f) camFlying = false;
+                if (Mathf.Abs(viewH - PlayView) < 0.5f && (camPos - flyTarget).sqrMagnitude < 1f)
+                {
+                    camFlying = false;
+                    ClampCam();
+                }
             }
             AnimateThings();
 
@@ -785,7 +870,12 @@ namespace Cattas
             return false;
         }
 
-        public void OnCatSaved(Cat cat) { cats.Remove(cat); saved++; }
+        public void OnCatSaved(Cat cat)
+        {
+            cats.Remove(cat);
+            saved++;
+            if (motherCat != null) motherCat.Pop();   // happy mum
+        }
         public void OnCatLost(Cat cat) { cats.Remove(cat); lost++; }
 
         // The level is over when time runs out, or every cat is out and the only ones left
@@ -992,7 +1082,11 @@ namespace Cattas
             if (cat.TryGiveTrait(selectedTrait))
             {
                 traitsLeft[(int)selectedTrait]--;
-                Sfx.Play("click", 0.8f, 0f);
+                Sfx.Play("trait", 0.9f, 0f);
+                // ta-da! the kitten pops, looks up, sparkles, and the trait's name floats up above it
+                if (cat.Puppet != null) cat.Puppet.Pop();
+                Burst(cat.X, cat.Y + 8, new Color(1f, 0.95f, 0.6f), 10, 35f, 45f, 1.1f, 0.6f, -40f);
+                worldPopups.Add(new WorldPopup { text = CatTraits.DisplayName(selectedTrait) + "!", pos = new Vector2(cat.X, cat.Y + 18), time = Time.unscaledTime });
             }
         }
 
@@ -1161,6 +1255,18 @@ namespace Cattas
         void DrawPreview()
         {
             float pad = fs * 0.6f;
+            if (level.HasArea)
+            {
+                // name the dimmed parts of the picture
+                var a = playArea;
+                var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 1.1f) };
+                st.normal.textColor = new Color(1f, 0.88f, 0.5f);
+                Vector3 c = cam.WorldToScreenPoint(new Vector3(a.center.x, a.yMax + Mathf.Min(40f, (levelHeight - a.yMax) / 2f), 0f));
+                if (a.yMax < levelHeight - 20)
+                    ShadowLabel(new Rect(c.x - fs * 12, Screen.height - c.y - fs, fs * 24, fs * 2), "NG+ area - come back with super traits!", st);
+                Vector3 c2 = cam.WorldToScreenPoint(new Vector3(a.center.x, a.yMax - 12f, 0f));
+                ShadowLabel(new Rect(c2.x - fs * 8, Screen.height - c2.y - fs, fs * 16, fs * 2), "Play area", st);
+            }
             DrawMinimap(pad);
             HandleCameraMouse();
 
@@ -1245,6 +1351,15 @@ namespace Cattas
             }
             GUI.color = old;
 
+            // the NG0 play area
+            if (level != null && level.HasArea)
+            {
+                var a = playArea;
+                DrawFrame(Rect.MinMaxRect(r.x + a.xMin / (float)levelWidth * mw, r.yMax - a.yMax / (float)levelHeight * mh,
+                                          r.x + a.xMax / (float)levelWidth * mw, r.yMax - a.yMin / (float)levelHeight * mh),
+                          2f, new Color(1f, 0.85f, 0.4f));
+            }
+
             // what the camera can see
             float halfH = viewH / 2f, halfW = halfH * cam.aspect;
             var view = Rect.MinMaxRect(
@@ -1321,6 +1436,7 @@ namespace Cattas
 
             DrawMinimap(pad);
             DrawPopups();
+            DrawWorldPopups();
 
             if (mode != GameMode.Playing) return;
 

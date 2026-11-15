@@ -20,6 +20,10 @@ class Level:
         self.W, self.H = self.C * CS, self.R * CS
         if "size" in self.meta:
             w, h = self.meta["size"].replace(",", " ").split()[:2]; self.W, self.H = int(w), int(h)
+        self.ax0, self.ay0, self.ax1, self.ay1 = 0, 0, self.W, self.H       # play area
+        if "area" in self.meta:
+            a = [int(v) for v in self.meta["area"].replace(",", " ").split()[:4]]
+            self.ax0, self.ay0, self.ax1, self.ay1 = min(a[0], a[2]), min(a[1], a[3]), max(a[0], a[2]), max(a[1], a[3])
         self.objects = []   # [type, x0, y0, x1, y1, extra, on]
         for line in txt:
             st = line.strip()
@@ -62,8 +66,8 @@ class Level:
                 self.solid[y * self.W + x] = 1
                 if hard: self.hard[y * self.W + x] = 1
     def is_solid(self, x, y):
-        if x < 0 or x >= self.W: return True
-        if y < 0 or y >= self.H: return False
+        if x < self.ax0 or x >= self.ax1: return True
+        if y < self.ay0 or y >= self.ay1: return False
         return self.solid[y * self.W + x] == 1
     def is_hard(self, x, y):
         if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
@@ -115,7 +119,7 @@ class Cat:
         getattr(s, s.state)() if s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch") else None
         if s.active():
             if lv.at_exit(s.x, s.y): s.state = "saved"
-            elif s.y < -20: s.state = "lost"
+            elif s.y < lv.ay0 - 20: s.state = "lost"
     def blocked(s, nx):
         for c in s.g.cats:
             if c is s or c.state != "block": continue
@@ -130,7 +134,7 @@ class Cat:
             h = 1
             while h <= 6 and lv.is_solid(nx, s.y + h): h += 1
             if h > 6:
-                if s.hasclimb and 0 <= nx < lv.W: s.state = "climb"; s.t = 0
+                if s.hasclimb and lv.ax0 <= nx < lv.ax1: s.state = "climb"; s.t = 0
                 else: s.dir = -s.dir
                 return
             s.x = nx; s.y += h; return
@@ -159,14 +163,14 @@ class Cat:
     def solid_ahead(s, dist, lo, hi):
         for i in range(1, dist + 1):
             cx = s.x + s.dir * i
-            if cx < 0 or cx >= s.lv.W: return False
+            if cx < s.lv.ax0 or cx >= s.lv.ax1: return False
             if any(s.lv.is_solid(cx, s.y + h) for h in range(lo, hi)): return True
         return False
     def zoom(s):
         s.t += 1
         if s.t < 2: return
         s.t = 0; lv = s.lv; nx = s.x + s.dir
-        if nx < 0 or nx >= lv.W or s.blocked(nx): s.dir = -s.dir; s.state = "walk"; return
+        if nx < lv.ax0 or nx >= lv.ax1 or s.blocked(nx): s.dir = -s.dir; s.state = "walk"; return
         if not s.solid_ahead(12, 0, 11): s.state = "walk"; return
         a, b = s.x + s.dir, s.x + s.dir * 5
         if lv.has_hard(min(a, b), s.y, max(a, b) + 1, s.y + 4): s.state = "walk"; return
@@ -185,7 +189,7 @@ class Cat:
         s.t += 1
         if s.t < 4: return
         s.t = 0; lv = s.lv; nx = s.x + s.dir
-        if nx < 0 or nx >= lv.W: s.dir = -s.dir; s.state = "walk"; return
+        if nx < lv.ax0 or nx >= lv.ax1: s.dir = -s.dir; s.state = "walk"; return
         if not s.solid_ahead(6, -1, 10): s.state = "walk"; return
         a, b = s.x + s.dir, s.x + s.dir * 4
         if lv.has_hard(min(a, b), s.y - 1, max(a, b) + 1, s.y + 3): s.state = "walk"; return
@@ -196,7 +200,7 @@ class Cat:
         if not lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0; return
         if s.steps > 0:
             nx = s.x + s.dir
-            if nx < 0 or nx >= lv.W or lv.is_solid(nx, s.y + 10) or lv.is_solid(nx, s.y + 3):
+            if nx < lv.ax0 or nx >= lv.ax1 or lv.is_solid(nx, s.y + 10) or lv.is_solid(nx, s.y + 3):
                 s.dir = -s.dir; s.state = "walk"; return
             if lv.is_solid(nx, s.y):
                 h = 1

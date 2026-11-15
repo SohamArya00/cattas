@@ -6,6 +6,7 @@ cats: 10
 need: 7
 rate: 1.5
 time: 300
+exit: litter
 traits: HairballBridge=2, BiscuitBaker=1, CableChewer=1
 map:
 ................................................................................

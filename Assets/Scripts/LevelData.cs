@@ -58,6 +58,13 @@ namespace Cattas
         public int Rows { get; private set; }
         // Level size in game pixels: from the map, unless "size: <width> <height>" is given (handy for painted levels)
         public int sizeW, sizeH;
+
+        // The NG0 play area inside a bigger picture: "area: x0 y0 x1 y1" (level pixels, y up). Empty = whole level.
+        public RectInt area;
+        public bool HasArea => area.width > 0 && area.height > 0;
+
+        // What the exit looks like: "house" (plain box), "mother" (mother cat with her milk), "litter" (litter tray)
+        public string exitStyle = "house";
         public int PixelWidth => sizeW > 0 ? sizeW : Cols * CellSize;
         public int PixelHeight => sizeH > 0 ? sizeH : Rows * CellSize;
 
@@ -109,6 +116,13 @@ namespace Cattas
                     case "rate": float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out d.rate); break;
                     case "speed": int.TryParse(val, out d.speed); break;
                     case "par": int.TryParse(val, out d.parSeconds); break;
+                    case "exit": d.exitStyle = val.ToLowerInvariant(); break;
+                    case "area":
+                        var a = val.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (a.Length == 4 && int.TryParse(a[0], out int ax0) && int.TryParse(a[1], out int ay0) &&
+                            int.TryParse(a[2], out int ax1) && int.TryParse(a[3], out int ay1))
+                            d.area = new RectInt(Mathf.Min(ax0, ax1), Mathf.Min(ay0, ay1), Mathf.Abs(ax1 - ax0), Mathf.Abs(ay1 - ay0));
+                        break;
                     case "size":
                         var wh = val.Split(new[] { ' ', 'x', 'X', ',' }, StringSplitOptions.RemoveEmptyEntries);
                         if (wh.Length == 2) { int.TryParse(wh[0], out d.sizeW); int.TryParse(wh[1], out d.sizeH); }

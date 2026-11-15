@@ -14,6 +14,21 @@ namespace Cattas
         public int ArtScale { get; private set; } = 1;
         public Texture2D Texture => texture;
 
+        // The play area: kittens can only use this part of the picture (the rest is for NG+ later).
+        // Its left and right sides act like walls, and below its bottom is a fall out of the level.
+        public int MinX { get; private set; }
+        public int MaxX { get; private set; }
+        public int MinY { get; private set; }
+        public int MaxY { get; private set; }
+
+        public void SetPlayArea(RectInt area)
+        {
+            MinX = Mathf.Clamp(area.xMin, 0, Width);
+            MaxX = Mathf.Clamp(area.xMax, MinX + 1, Width);
+            MinY = Mathf.Clamp(area.yMin, 0, Height);
+            MaxY = Mathf.Clamp(area.yMax, MinY + 1, Height);
+        }
+
         bool[] solid;
         bool[] hard;   // stone: can't be dug, zoomed or zapped
         Texture2D texture;
@@ -26,6 +41,7 @@ namespace Cattas
         {
             Width = width;
             Height = height;
+            MinX = 0; MaxX = width; MinY = 0; MaxY = height;
             ArtScale = Mathf.Clamp(artScale, 1, 8);
             texW = width * ArtScale;
             texH = height * ArtScale;
@@ -54,8 +70,8 @@ namespace Cattas
         // The left and right edges of the level act like walls; above and below are open air.
         public bool IsSolid(int x, int y)
         {
-            if (x < 0 || x >= Width) return true;
-            if (y < 0 || y >= Height) return false;
+            if (x < MinX || x >= MaxX) return true;
+            if (y < MinY || y >= MaxY) return false;
             return solid[y * Width + x];
         }
 

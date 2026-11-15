@@ -29,6 +29,7 @@ cats: {cats}
 need: {need}
 rate: {rate}
 time: {time}
+exit: {"mother" if n <= 5 else "litter"}
 traits: {t}
 map:
 {m.text()}

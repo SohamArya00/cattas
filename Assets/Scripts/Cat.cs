@@ -133,7 +133,7 @@ namespace Cattas
                     Destroy(gameObject);
                     return;
                 }
-                if (y < -20) // fell out of the bottom of the level
+                if (y < ground.MinY - 20) // fell out of the bottom of the level (or the play area)
                 {
                     State = CatState.Lost;
                     game.OnCatLost(this);
@@ -256,7 +256,7 @@ namespace Cattas
 
             // Reached the edge of the level, or a Biscuit Baker? Calm down and turn round.
             int nextX = x + dir;
-            if (nextX < 0 || nextX >= ground.Width || game.IsBlockedByBaker(this, nextX, y))
+            if (nextX < ground.MinX || nextX >= ground.MaxX || game.IsBlockedByBaker(this, nextX, y))
             {
                 dir = -dir;
                 State = CatState.Walking;
@@ -336,7 +336,7 @@ namespace Cattas
             scratchTimer = 0;
 
             int nextX = x + dir;
-            if (nextX < 0 || nextX >= ground.Width)
+            if (nextX < ground.MinX || nextX >= ground.MaxX)
             {
                 dir = -dir;
                 State = CatState.Walking;
@@ -377,7 +377,7 @@ namespace Cattas
             for (int i = 1; i <= ScratchReach + 2; i++)
             {
                 int cx = x + dir * i;
-                if (cx < 0 || cx >= ground.Width) return false;
+                if (cx < ground.MinX || cx >= ground.MaxX) return false;
                 for (int h = -1; h < CatHeight; h++)
                     if (ground.IsSolid(cx, y + h)) return true;
             }
@@ -409,7 +409,7 @@ namespace Cattas
             if (bridgeStepsLeft > 0)
             {
                 int nextX = x + dir;
-                if (nextX < 0 || nextX >= ground.Width || ground.IsSolid(nextX, y + CatHeight) || ground.IsSolid(nextX, y + HairballHeight + 1))
+                if (nextX < ground.MinX || nextX >= ground.MaxX || ground.IsSolid(nextX, y + CatHeight) || ground.IsSolid(nextX, y + HairballHeight + 1))
                 {
                     // Bumped into something - stop building and turn round
                     dir = -dir;
@@ -444,7 +444,7 @@ namespace Cattas
             for (int i = 1; i <= distance; i++)
             {
                 int cx = x + dir * i;
-                if (cx < 0 || cx >= ground.Width) return false;
+                if (cx < ground.MinX || cx >= ground.MaxX) return false;
                 for (int h = 0; h < ZoomTunnelHeight; h++)
                     if (ground.IsSolid(cx, y + h)) return true;
             }
@@ -466,7 +466,7 @@ namespace Cattas
                 if (h > MaxStepUp)
                 {
                     // It's a wall! Climbers climb it (but not the edge of the level); everyone else turns round.
-                    if (hasClimber && nextX >= 0 && nextX < ground.Width)
+                    if (hasClimber && nextX >= ground.MinX && nextX < ground.MaxX)
                     {
                         State = CatState.Climbing;
                         climbTimer = 0;

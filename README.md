@@ -63,7 +63,7 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `H` / `h` | hatch – cats drop out of here walking right (`H`) or left (`h`) |
 | `E` | exit – put ground under it |
 
-Settings: `name`, `hint`, `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
+Settings: `name`, `hint`, `area` (NG0 play area inside the picture: `x0 y0 x1 y1`), `exit` (`house`, `mother` or `litter`), `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
 Maps are normally 45 rows tall; make them wider than 80 columns for a scrolling level.
 
 **Objects** (one per line, game pixels with y measured up from the bottom):

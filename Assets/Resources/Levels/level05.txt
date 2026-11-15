@@ -6,6 +6,7 @@ cats: 10
 need: 6
 rate: 1.5
 time: 300
+exit: mother
 traits: CurtainClimber=10
 map:
 ................................................................................

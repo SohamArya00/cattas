@@ -66,6 +66,9 @@ namespace Cattas
             // a cat pops out of the hatch
             Make("pop", 0.12f, t => Sweep(t, 420f, 1100f, 0.12f) * Decay(t, 30f) * 0.6f);
 
+            // a trait given to a kitten: quick bright "ta-da"
+            Make("trait", 0.25f, t => (Tone(t, 880f) * Decay(t, 20f) + (t > 0.06f ? Tone(t, 1318.5f) * Decay(t - 0.06f, 14f) : 0f)) * 0.3f);
+
             // a cat gets home: two-note chime
             Make("home", 0.45f, t =>
                 (Tone(t, 1046.5f) * Decay(t, 9f) + (t > 0.09f ? Tone(t, 1568f) * Decay(t - 0.09f, 7f) : 0f)) * 0.35f);
