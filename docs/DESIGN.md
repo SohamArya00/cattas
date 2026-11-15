@@ -123,6 +123,13 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - Artist – TBD name
 - Music & SFX – TBD name
 
+## Level 1 – The Bath Steps (1960s bathroom)
+- Each room can be a different era; the bathroom is 1960s.
+- Play area: the bath steps, rug and stool. The rest of the bathroom is the dimmed NG+ area.
+- Kittens tumble out of a towel on the bath onto the top step. Mum sits on the stool with her milk.
+- Teaches **Litter Lord** (dig down the three steps) then **Hairball Bridge** (build up to the stool; click the builder again to keep building). Paw prints on the floor show where to start the bridge. Tips appear as the player progresses. Starts at 40% speed.
+- Mum's moods: watches, grooms, gets excited when kittens are near, bounces and mews when one arrives, droops when one is lost, celebrates a win.
+
 ## Done this session
 - Play area inside a big picture (`area:`), with the NG+ area dimmed and labelled in look-around mode
 - Mother cat exit (levels 1–5) and litter tray exit (levels 6–10)

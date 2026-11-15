@@ -48,6 +48,11 @@ namespace Cattas
         // background: the picture behind everything.
         public string background = "";
         public string foreground = "";
+        public string stone = "";       // optional picture: its opaque parts can't be dug (painted levels)
+
+        // Tutorial tips: "tip: <when> | <text>"  -  when = start, below <y>, saved <n>, used <Trait> <n>
+        public class Tip { public string when = "start"; public string arg = ""; public int n; public string text = ""; }
+        public readonly List<Tip> tips = new List<Tip>();
         public bool showMarkers = true; // draw the plain hatch/exit boxes (turn off when the art has its own)
         public int parSeconds;          // optional "finish in under" target time
         public readonly List<LevelObject> objects = new List<LevelObject>();
@@ -129,6 +134,19 @@ namespace Cattas
                         break;
                     case "object": ParseObject(d, val); break;
                     case "background": d.background = val; break;
+                    case "stone": d.stone = val; break;
+                    case "tip":
+                    {
+                        int bar = val.IndexOf('|');
+                        if (bar < 0) break;
+                        var cond = val.Substring(0, bar).Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        var tip = new Tip { text = val.Substring(bar + 1).Trim() };
+                        if (cond.Length > 0) tip.when = cond[0].ToLowerInvariant();
+                        if (cond.Length > 1 && !int.TryParse(cond[1], out tip.n)) tip.arg = cond[1];
+                        if (cond.Length > 2) int.TryParse(cond[2], out tip.n);
+                        d.tips.Add(tip);
+                        break;
+                    }
                     case "foreground": d.foreground = val; break;
                     case "markers": d.showMarkers = !(val.ToLowerInvariant() == "off" || val.ToLowerInvariant() == "hidden" || val.ToLowerInvariant() == "no"); break;
                     case "traits": ParseTraits(d, val); break;

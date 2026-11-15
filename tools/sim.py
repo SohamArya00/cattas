@@ -40,6 +40,16 @@ class Level:
             for y in range(self.H):
                 for x in range(self.W):
                     if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 1
+        stone = self.meta.get("stone", "")
+        if art and stone:
+            from PIL import Image
+            img = Image.open(os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Art", stone + ".bytes")).convert("RGBA")
+            a = img.split()[3].load()
+            for y in range(self.H):
+                sy = min(img.height - 1, int((y + 0.5) * img.height / self.H))
+                for x in range(self.W):
+                    i = y * self.W + x
+                    if self.solid[i] and a[min(img.width - 1, int((x + 0.5) * img.width / self.W)), img.height - 1 - sy] > 127: self.hard[i] = 1
         for row, r in enumerate(rows):
             y0 = (self.R - 1 - row) * CS
             for col, ch in enumerate(r):
@@ -58,6 +68,13 @@ class Level:
                         self.fill(x0 + i, y0, x0 + i + 1, y0 + h)
                 elif ch in 'Hh': self.hatches.append((x0 + 4, y0 - 2, -1 if ch == 'h' else 1))
                 elif ch == 'E': self.exits.append((x0 + 4 - 4, y0, 9, 10))
+        if self.meta.get("exit", "") == "mother" and self.hatches:
+            hx = self.hatches[0][0]; wide = []
+            for (ex, ey, w, h) in self.exits:
+                cx = ex + 4; side = 1 if hx <= cx else -1
+                a, b = cx - side * 6, cx + side * 26
+                wide.append((min(a, b), ey, abs(b - a), 12))
+            self.exits = wide
         self.cats = int(self.meta.get("cats", 10)); self.need = int(self.meta.get("need", 5))
         self.rate = float(self.meta.get("rate", 1.5))
     def fill(self, x0, y0, x1, y1, hard=False):
@@ -102,6 +119,7 @@ class Cat:
         if trait == "BiscuitBaker" and st == "walk": s.state = "block"; return True
         if trait == "Zoomies" and st == "walk": s.state = "zoom"; s.t = 0; return True
         if trait == "Scratcher" and st == "walk": s.state = "scratch"; s.t = 0; return True
+        if trait == "HairballBridge" and st == "build": s.balls += 12; return True
         if trait == "HairballBridge" and st == "walk": s.state = "build"; s.balls = 12; s.t = 0; s.steps = 0; return True
         if trait == "Fluffchute" and not s.chute and st in ("walk", "fall", "dig"): s.chute = True; return True
         if trait == "CurtainClimber" and not s.hasclimb and st != "block": s.hasclimb = True; return True
@@ -274,7 +292,20 @@ if __name__ == "__main__":
     allok = True
     for n in range(1, 11):
         allok &= check(n, "no traits used (should FAIL)", expect_win=False)
-    allok &= check(1, "Litter Lord on upper floor", [(walking_near(150, 250, 224), "LitterLord")])
+    allok &= check(1, "Dig 3 steps, then 2 bridges up to Mum", [
+        (lambda g, c: c.state == "walk" and c.y == 102 and 270 <= c.x <= 315, "LitterLord"),
+        (lambda g, c: c.state == "walk" and c.y == 79 and 270 <= c.x <= 315, "LitterLord"),
+        (lambda g, c: c.state == "walk" and c.y == 57 and 270 <= c.x <= 315, "LitterLord"),
+        (lambda g, c: c.state == "walk" and c.y == 42 and c.dir == 1 and 372 <= c.x <= 380, "HairballBridge"),
+        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")])
+    for x0 in (352, 362, 384):
+        allok &= check(1, f"...bridge started at x={x0} (3 clicks allowed)", [
+            (lambda g, c: c.state == "walk" and c.y == 102 and 270 <= c.x <= 315, "LitterLord"),
+            (lambda g, c: c.state == "walk" and c.y == 79 and 270 <= c.x <= 315, "LitterLord"),
+            (lambda g, c: c.state == "walk" and c.y == 57 and 270 <= c.x <= 315, "LitterLord"),
+            (lambda g, c, x0=x0: c.state == "walk" and c.y == 42 and c.dir == 1 and c.x == x0, "HairballBridge"),
+            (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge"),
+            (lambda g, c: c.state == "build" and c.balls <= 2 and c.x < 462, "HairballBridge")])
     allok &= check(2, "Fluffchute every cat", [(lambda g, c: c.state in ("walk", "fall") and not c.chute, "Fluffchute")] * 10)
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])

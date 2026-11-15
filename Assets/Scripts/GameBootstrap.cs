@@ -44,6 +44,7 @@ namespace Cattas
         LevelData level;
         int levelWidth = 640, levelHeight = 360;
         readonly int[] traitsLeft = new int[CatTraits.Count];
+        readonly int[] traitsUsed = new int[CatTraits.Count];
         CatTrait selectedTrait = CatTrait.LitterLord;
 
         int released, saved, lost, ticksUntilNextCat, ticksLeft, elapsedTicks;
@@ -234,7 +235,9 @@ namespace Cattas
             timeUp = false;
             ticksUntilNextCat = TicksPerSecond; // first cat after 1 second
             ticksLeft = level.timeSeconds * TicksPerSecond;
-            for (int i = 0; i < traitsLeft.Length; i++) traitsLeft[i] = level.traits[i];
+            for (int i = 0; i < traitsLeft.Length; i++) { traitsLeft[i] = level.traits[i]; traitsUsed[i] = 0; }
+            tipsShown.Clear();
+            currentTip = "";
             selectedTrait = FirstAvailableTrait();
             minSpeedPercent = level.speed;
             speedPercent = level.speed;
@@ -275,6 +278,12 @@ namespace Cattas
             {
                 ground.ApplyArt(fgArt);
                 Destroy(fgArt);
+                var stoneArt = Art.Load(level.stone);
+                if (stoneArt != null)
+                {
+                    ground.MakeHardFromArt(stoneArt);
+                    Destroy(stoneArt);
+                }
             }
 
             const int cs = LevelData.CellSize;
@@ -352,20 +361,32 @@ namespace Cattas
 
         void AddExit(int centreX, int floorY)
         {
+            var zone = new RectInt(centreX - 4, floorY, 9, 10);
+            if (level.exitStyle == "mother")
+            {
+                // reaching Mum counts anywhere from her milk bowl to her tail
+                int hx = spawnPoints.Count > 0 ? spawnPoints[0].x : 0;
+                int side = hx <= centreX ? 1 : -1;
+                int a = centreX - side * 6, b = centreX + side * 26;
+                zone = new RectInt(Mathf.Min(a, b), floorY, Mathf.Abs(b - a), 12);
+            }
             if (level.exitStyle == "mother" && KittenRig != null)
             {
                 // Mum! She sits beside her milk bowl, facing the way her kittens will come from.
                 int hatchX = spawnPoints.Count > 0 ? spawnPoints[0].x : 0;
                 int away = hatchX <= centreX ? 1 : -1;
+                float mumX = centreX + away * 13f;
+                int mumY = SurfaceBelow((int)mumX, floorY + 12, floorY - 12, floorY);
                 var mum = new GameObject("Mother Cat");
                 mum.transform.SetParent(levelRoot, false);
-                mum.transform.localPosition = new Vector3(centreX + away * 13f, floorY, 0f);
+                mum.transform.localPosition = new Vector3(mumX, mumY, 0f);
                 mum.transform.localScale = new Vector3(2.3f, 2.3f, 1f);
                 motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 4);
                 motherCat.mother = true;
                 motherCat.flip = away > 0;
-                MakeBox("Milk bowl", new Vector2Int(centreX - 6, floorY), 13, 4, new Color32(238, 150, 165, 255), 6);
-                MakeBox("Milk", new Vector2Int(centreX - 5, floorY + 3), 11, 2, new Color32(255, 252, 245, 255), 7);
+                int bowlY = SurfaceBelow(centreX, floorY + 12, floorY - 12, floorY);
+                MakeBox("Milk bowl", new Vector2Int(centreX - 6, bowlY), 13, 4, new Color32(238, 150, 165, 255), 6);
+                MakeBox("Milk", new Vector2Int(centreX - 5, bowlY + 3), 11, 2, new Color32(255, 252, 245, 255), 7);
             }
             else if (level.exitStyle == "litter")
             {
@@ -378,7 +399,16 @@ namespace Cattas
                 MakeBox("Exit House", new Vector2Int(centreX - 10, floorY), 20, 26, new Color32(150, 90, 50, 255), 1);
                 MakeBox("Exit Door", new Vector2Int(centreX - 5, floorY), 10, 14, new Color32(40, 25, 20, 255), 2);
             }
-            exitZones.Add(new RectInt(centreX - 4, floorY, 9, 10));
+            exitZones.Add(zone);
+        }
+
+        // The first standing spot found going down from 'top' to 'bottom' (e.g. the top of a stool)
+        int SurfaceBelow(int x, int top, int bottom, int fallback)
+        {
+            if (ground == null) return fallback;
+            for (int y = top; y >= bottom; y--)
+                if (!ground.IsSolid(x, y) && ground.IsSolid(x, y - 1)) return y;
+            return fallback;
         }
 
         GameObject MakeBox(string name, Vector2Int pos, int w, int h, Color32 colour, int order)
@@ -639,6 +669,55 @@ namespace Cattas
             }
         }
 
+        // ---------- Tutorial tips ----------
+        readonly HashSet<int> tipsShown = new HashSet<int>();
+        string currentTip = "";
+        float tipTime;
+
+        void UpdateTips()
+        {
+            for (int i = 0; i < level.tips.Count; i++)
+            {
+                if (tipsShown.Contains(i)) continue;
+                var tip = level.tips[i];
+                bool now = false;
+                switch (tip.when)
+                {
+                    case "start": now = true; break;
+                    case "saved": now = saved >= Mathf.Max(1, tip.n); break;
+                    case "below":
+                        foreach (var c in cats) if (c.IsActive && c.State == CatState.Walking && c.Y < tip.n) { now = true; break; }
+                        break;
+                    case "used":
+                        if (System.Enum.TryParse(tip.arg, true, out CatTrait tr)) now = traitsUsed[(int)tr] >= Mathf.Max(1, tip.n);
+                        break;
+                    case "bridges":
+                        now = traitsUsed[(int)CatTrait.HairballBridge] >= Mathf.Max(1, tip.n);
+                        break;
+                }
+                if (!now) continue;
+                tipsShown.Add(i);
+                currentTip = tip.text;
+                tipTime = Time.unscaledTime;
+                Sfx.Play("click", 0.5f, 0f);
+            }
+        }
+
+        // Tip banner just above the trait bar
+        void DrawTip(float pad)
+        {
+            if (string.IsNullOrEmpty(currentTip)) return;
+            float w = Mathf.Min(Screen.width * 0.7f, fs * 40f);
+            var st = new GUIStyle(darkLabel) { wordWrap = true, alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 0.9f) };
+            float h = st.CalcHeight(new GUIContent(currentTip), w - fs * 2) + fs * 1.2f;
+            float y = Screen.height - pad - fs * 3.2f - pad - h;
+            float age = Time.unscaledTime - tipTime;
+            float bounce = age < 0.4f ? Mathf.Sin(age / 0.4f * Mathf.PI) * fs * 0.5f : 0f;
+            var r = new Rect((Screen.width - w) / 2f, y - bounce, w, h);
+            GUI.Box(r, GUIContent.none, panel);
+            GUI.Label(new Rect(r.x + fs, r.y, r.width - fs * 2, r.height), currentTip, st);
+        }
+
         // ---------- Popup messages ----------
         struct PopupMsg { public string text; public float time; }
         readonly List<PopupMsg> popups = new List<PopupMsg>();
@@ -798,6 +877,15 @@ namespace Cattas
                 }
             }
             AnimateThings();
+            if (motherCat != null)
+            {
+                // Mum gets excited when a kitten is close
+                var mp = motherCat.transform.position;
+                bool near = false;
+                foreach (var c in cats)
+                    if (c.IsActive && Mathf.Abs(c.X - mp.x) < 70f && Mathf.Abs(c.Y - mp.y) < 45f) { near = true; break; }
+                motherCat.excited = near;
+            }
 
             if (mode != GameMode.Playing) { TickAlpha = 1f; return; }
 
@@ -839,10 +927,13 @@ namespace Cattas
             elapsedTicks++;
             if (--ticksLeft <= 0) timeUp = true;
 
+            UpdateTips();
+
             if (IsFinished)
             {
                 RecordResult();
                 mode = GameMode.Results;
+                if (motherCat != null && saved >= level.need) motherCat.Celebrate();
             }
         }
 
@@ -874,9 +965,22 @@ namespace Cattas
         {
             cats.Remove(cat);
             saved++;
-            if (motherCat != null) motherCat.Pop();   // happy mum
+            if (motherCat != null)
+            {
+                motherCat.Pop();   // happy mum
+                Sfx.Play("mew", 0.8f, 0.6f);
+            }
         }
-        public void OnCatLost(Cat cat) { cats.Remove(cat); lost++; }
+        public void OnCatLost(Cat cat)
+        {
+            cats.Remove(cat);
+            lost++;
+            if (motherCat != null)
+            {
+                motherCat.Worry();   // oh no!
+                Sfx.Play("mewsad", 0.7f, 1.5f);
+            }
+        }
 
         // The level is over when time runs out, or every cat is out and the only ones left
         // are Biscuit Bakers (they're busy and will never leave).
@@ -1082,6 +1186,7 @@ namespace Cattas
             if (cat.TryGiveTrait(selectedTrait))
             {
                 traitsLeft[(int)selectedTrait]--;
+                traitsUsed[(int)selectedTrait]++;
                 Sfx.Play("trait", 0.9f, 0f);
                 // ta-da! the kitten pops, looks up, sparkles, and the trait's name floats up above it
                 if (cat.Puppet != null) cat.Puppet.Pop();
@@ -1441,6 +1546,7 @@ namespace Cattas
             if (mode != GameMode.Playing) return;
 
             DrawTraitBar(pad);
+            DrawTip(pad);
 
             // Cable Chewer countdowns above cats' heads
             var fuseStyle = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 1.1f) };

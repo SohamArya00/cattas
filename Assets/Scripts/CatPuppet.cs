@@ -69,6 +69,12 @@ namespace Cattas
 
         public void Pop() { pop = 1f; }
 
+        // Mum's moods
+        [HideInInspector] public bool excited;   // kittens are close - lean in, tail flicking
+        float worry, groomTimer = 6f, groom, celebrate;
+        public void Worry() { worry = 1.8f; }        // a kitten was lost - head droops
+        public void Celebrate() { celebrate = 3f; }  // level won - happy bouncing
+
         Transform rigRoot;                       // tilts and bobs the whole body
         readonly Dictionary<string, Transform> bones = new Dictionary<string, Transform>();
         readonly Dictionary<string, Vector3> rest = new Dictionary<string, Vector3>();
@@ -226,6 +232,37 @@ namespace Cattas
                 tilt = 10f; backNear = backFar = 62f; frontNear = frontFar = -4f;
                 frontNearOff = frontFarOff = Vector2.zero;
                 head = Mathf.Sin(t * 0.7f) * 6f + 4f; tail = 15f + Mathf.Sin(t * 1.5f) * 18f; bob = 0f; gait = false;
+
+                // every so often she has a little groom (paw up, head down)
+                groomTimer -= dt;
+                if (groomTimer <= 0f) { groom = 2.2f; groomTimer = Random.Range(7f, 12f); }
+                if (groom > 0f && worry <= 0f && !excited)
+                {
+                    groom -= dt;
+                    float g = Mathf.Clamp01(Mathf.Min(groom, 2.2f - groom) * 3f);
+                    head = Mathf.Lerp(head, -22f + Mathf.Sin(t * 9f) * 5f, g);
+                    frontNear = Mathf.Lerp(frontNear, 70f, g);
+                    frontNearOff = new Vector2(0f, 1.2f * g);
+                }
+                if (excited)
+                {
+                    tilt = 3f; head = -6f + Mathf.Sin(t * 3f) * 4f;
+                    tail = 30f + Mathf.Sin(t * 9f) * 14f;
+                }
+                if (worry > 0f)
+                {
+                    worry -= dt;
+                    float w = Mathf.Clamp01(worry);
+                    head = Mathf.Lerp(head, -20f + Mathf.Sin(t * 12f) * 3f, w);
+                    tail = Mathf.Lerp(tail, -12f, w);
+                    tilt = Mathf.Lerp(tilt, 4f, w);
+                }
+                if (celebrate > 0f)
+                {
+                    celebrate -= dt;
+                    if (pop <= 0.05f) pop = 1f;
+                    tail = 40f + Mathf.Sin(t * 14f) * 15f;
+                }
             }
 
             if (gait)

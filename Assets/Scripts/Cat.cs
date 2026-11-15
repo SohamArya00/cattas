@@ -178,6 +178,12 @@ namespace Cattas
                     fuseTicks = FuseSeconds * GameBootstrap.TicksPerSecond;
                     return true;
                 case CatTrait.HairballBridge:
+                    // Clicking a kitten that's already building keeps it going: 12 more hairballs!
+                    if (State == CatState.Building)
+                    {
+                        hairballsLeft += HairballsPerBridge;
+                        return true;
+                    }
                     if (State != CatState.Walking) return false;
                     State = CatState.Building;
                     hairballsLeft = HairballsPerBridge;

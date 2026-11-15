@@ -63,7 +63,7 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `H` / `h` | hatch – cats drop out of here walking right (`H`) or left (`h`) |
 | `E` | exit – put ground under it |
 
-Settings: `name`, `hint`, `area` (NG0 play area inside the picture: `x0 y0 x1 y1`), `exit` (`house`, `mother` or `litter`), `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
+Settings: `name`, `hint`, `stone` (picture marking what can't be dug in painted levels), `tip` (tutorial tips, e.g. `tip: below 48 | On the floor!`; conditions: `start`, `below <y>`, `saved <n>`, `used <Trait> <n>`, `bridges <n>`), `area` (NG0 play area inside the picture: `x0 y0 x1 y1`), `exit` (`house`, `mother` or `litter`), `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
 Maps are normally 45 rows tall; make them wider than 80 columns for a scrolling level.
 
 **Objects** (one per line, game pixels with y measured up from the bottom):
@@ -78,7 +78,7 @@ object: secret x0 y0 x1 y1 secret_mouse Lost Toy Mouse
 
 Handy numbers: cats can step up 6px (less than one block — use ramps!), and falls over 60px (more than 7 blocks) splat without a Fluffchute.
 
-`bash tools/check_compile.sh` compile-checks the scripts without Unity. `tools/make_levels.py` generated the starter levels, and `tools/sim.py` is a copy of the cat rules in Python that checks each level is solvable (`python3 tools/sim.py`).
+`bash tools/check_compile.sh` compile-checks the scripts without Unity. `tools/make_bathroom_level.py` builds Level 1 from the 1960s bathroom picture in `tools/art_sources/` (AI placeholder art). `tools/make_levels.py` generated the other starter levels, and `tools/sim.py` is a copy of the cat rules in Python that checks each level is solvable (`python3 tools/sim.py`).
 
 ## Code layout
 | File | What it does |

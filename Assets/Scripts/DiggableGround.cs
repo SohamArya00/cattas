@@ -107,6 +107,25 @@ namespace Cattas
             needsRedraw = true;
         }
 
+        // Use a picture to mark stone: anything solid where the picture is opaque can't be dug.
+        public void MakeHardFromArt(Texture2D art)
+        {
+            if (art == null) return;
+            var src = art.GetPixels32();
+            int aw = art.width, ah = art.height;
+            for (int y = 0; y < Height; y++)
+            {
+                int sy = Mathf.Min(ah - 1, (int)((y + 0.5f) * ah / Height));
+                for (int x = 0; x < Width; x++)
+                {
+                    int i = y * Width + x;
+                    if (!solid[i]) continue;
+                    int sx = Mathf.Min(aw - 1, (int)((x + 0.5f) * aw / Width));
+                    if (src[sy * aw + sx].a > 127) hard[i] = true;
+                }
+            }
+        }
+
         // Turn any solid ground inside this rectangle into stone (used with painted art + 'X' map cells).
         public void MakeHard(int x0, int y0, int x1, int y1)
         {

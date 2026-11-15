@@ -61,10 +61,27 @@ namespace Cattas
             clips[name] = clip;
         }
 
+        // A cat-ish "mew": a gliding pitch with a few harmonics and a little wobble
+        static float Mew(float t, float dur, float f0, float fMid, float f1)
+        {
+            float u = t / dur;
+            float f = u < 0.35f ? Mathf.Lerp(f0, fMid, u / 0.35f) : Mathf.Lerp(fMid, f1, (u - 0.35f) / 0.65f);
+            f *= 1f + 0.015f * Mathf.Sin(2f * Mathf.PI * 6f * t);
+            mewPhase += 2f * Mathf.PI * f / Rate;
+            float v = Mathf.Sin(mewPhase) * 0.6f + Mathf.Sin(mewPhase * 2f) * 0.3f + Mathf.Sin(mewPhase * 3f) * 0.15f;
+            float env = Attack(t, 0.04f) * Mathf.Clamp01((dur - t) / (dur * 0.5f));
+            return v * env;
+        }
+        static float mewPhase;
+
         static void BuildClips()
         {
             // a cat pops out of the hatch
             Make("pop", 0.12f, t => Sweep(t, 420f, 1100f, 0.12f) * Decay(t, 30f) * 0.6f);
+
+            // Mum: a happy little "mew" and a worried one
+            Make("mew", 0.42f, t => Mew(t, 0.42f, 620f, 900f, 700f) * 0.32f);
+            Make("mewsad", 0.6f, t => Mew(t, 0.6f, 560f, 620f, 380f) * 0.3f);
 
             // a trait given to a kitten: quick bright "ta-da"
             Make("trait", 0.25f, t => (Tone(t, 880f) * Decay(t, 20f) + (t > 0.06f ? Tone(t, 1318.5f) * Decay(t - 0.06f, 14f) : 0f)) * 0.3f);
