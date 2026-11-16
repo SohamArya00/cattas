@@ -8,7 +8,8 @@ namespace Cattas
     // and falls off edges. Falling too far = splat.
     public class Cat : MonoBehaviour
     {
-        public const int MaxStepUp = 6;       // can walk up bumps this tall
+        public const int MaxStepUp = 9;       // can walk up bumps this tall (a small mound, not a wall)
+        public const int BridgeStepBonus = 4; // ...and a little more when standing on a hairball bridge, so the top is easy to reach
         public const int MaxStepDown = 3;     // can walk down bumps this tall without "falling"
         public const int FallSpeed = 3;       // pixels per step while falling
         public const int SafeFallHeight = 60; // fall further than this and... splat
@@ -449,8 +450,9 @@ namespace Cattas
                     return;
                 }
                 int h = 0;
-                while (h <= MaxStepUp && ground.IsSolid(nextX, y + h)) h++;
-                if (h > MaxStepUp || ground.IsSolid(nextX, y + h + CatHeight))
+                int limit = StepLimit;
+                while (h <= limit && ground.IsSolid(nextX, y + h)) h++;
+                if (h > limit || ground.IsSolid(nextX, y + h + CatHeight))
                 {
                     // Bumped into something solid - stop building and turn round
                     dir = -dir;
@@ -494,6 +496,9 @@ namespace Cattas
             return false;
         }
 
+        // How tall an edge this kitten can step up onto right now
+        int StepLimit => MaxStepUp + (ground.IsBuilt(x, y - 1) || ground.IsBuilt(x, y - 2) ? BridgeStepBonus : 0);
+
         void Walk()
         {
             int nextX = x + dir;
@@ -505,8 +510,9 @@ namespace Cattas
             {
                 // Something in the way - is it a small step we can climb?
                 int h = 1;
-                while (h <= MaxStepUp && ground.IsSolid(nextX, y + h)) h++;
-                if (h > MaxStepUp)
+                int limit = StepLimit;
+                while (h <= limit && ground.IsSolid(nextX, y + h)) h++;
+                if (h > limit)
                 {
                     // It's a wall! Climbers climb it (but not the edge of the level); everyone else turns round.
                     if (hasClimber && nextX >= ground.MinX && nextX < ground.MaxX)

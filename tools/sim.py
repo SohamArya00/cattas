@@ -32,6 +32,7 @@ class Level:
                 self.objects.append([parts[0], int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), parts[5:] , True])
         self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)   # solid: 1 back, 2 front, 3 both
         self.plane = 3          # the plane of the cat being simulated (set by Cat.tick)
+        self.built = bytearray(self.W * self.H)   # hairball bridge pixels
         self.front_y = int(self.meta.get("frontplane", 0) or 0)
         self.hatches, self.exits = [], []
         goals = []
@@ -119,7 +120,7 @@ class Level:
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if (self.solid[i] & self.plane) and not self.hard[i]: self.solid[i] &= ~self.plane & 3
+                if (self.solid[i] & self.plane) and not self.hard[i]: self.solid[i] &= ~self.plane & 3; self.built[i] = 0
     def carve_circle(self, cx, cy, r):
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
@@ -128,7 +129,11 @@ class Level:
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if not (self.solid[i] & self.plane): self.solid[i] |= self.plane
+                if not (self.solid[i] & self.plane): self.solid[i] |= self.plane; self.built[i] = 1
+    def is_built(self, x, y):
+        if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
+        i = y * self.W + x
+        return self.built[i] == 1 and (self.solid[i] & self.plane) != 0
     def at_exit(self, x, y):
         return any(ex <= x < ex + w and ey <= y < ey + h for ex, ey, w, h in self.exits)
 
@@ -138,6 +143,7 @@ class Cat:
         s.plane = 1 if lv.front_y > 0 else 3
         s.state = "fall"; s.fd = 0; s.t = 0; s.chute = s.hasclimb = False
         s.fuse = -1; s.balls = 0; s.steps = 0
+    def step_limit(s): return 9 + (4 if s.lv.is_built(s.x, s.y - 1) or s.lv.is_built(s.x, s.y - 2) else 0)
     def active(s): return s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch")
     def give(s, trait):
         st = s.state
@@ -180,8 +186,9 @@ class Cat:
         if s.blocked(nx): s.dir = -s.dir; return
         if lv.is_solid(nx, s.y):
             h = 1
-            while h <= 6 and lv.is_solid(nx, s.y + h): h += 1
-            if h > 6:
+            lim = s.step_limit()
+            while h <= lim and lv.is_solid(nx, s.y + h): h += 1
+            if h > lim:
                 if s.hasclimb and lv.ax0 <= nx < lv.ax1: s.state = "climb"; s.t = 0
                 else: s.dir = -s.dir
                 return
@@ -252,8 +259,9 @@ class Cat:
             nx = s.x + s.dir
             if nx < lv.ax0 or nx >= lv.ax1: s.dir = -s.dir; s.state = "walk"; return
             h = 0
-            while h <= 6 and lv.is_solid(nx, s.y + h): h += 1
-            if h > 6 or lv.is_solid(nx, s.y + h + 10): s.dir = -s.dir; s.state = "walk"; return
+            lim = s.step_limit()
+            while h <= lim and lv.is_solid(nx, s.y + h): h += 1
+            if h > lim or lv.is_solid(nx, s.y + h + 10): s.dir = -s.dir; s.state = "walk"; return
             s.x = nx; s.y += h; s.steps -= 1
             return
         if s.balls <= 0:                      # wait a second for the player to click again
@@ -332,10 +340,10 @@ if __name__ == "__main__":
                 (lambda g, c, x0=x0: c.state == "walk" and c.y == 53 and c.dir == 1 and c.x == x0, "HairballBridge")]
         plan += [(lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")] * extra_clicks
         return plan
-    for x0 in (376, 368, 360, 340):
+    for x0 in (388, 376, 368, 360, 340):
         allok &= check(1, f"Dig 3 steps, bridge from x={x0} (+2 clicks)", l1(x0, 2))
-    allok &= check(1, "bridge from x=392, no extra clicks (should FAIL: too short)", l1(392, 0), expect_win=False)
-    allok &= check(1, "bridge from x=392 too late: bumps the cushion (should FAIL)", l1(392, 2), expect_win=False)
+    allok &= check(1, "bridge from x=404, no extra clicks (should FAIL: too short)", l1(404, 0), expect_win=False)
+    allok &= check(1, "bridge from x=404 too late: bumps the cushion (should FAIL)", l1(404, 2), expect_win=False)
     # the stool leg must not leave a gap in the bottom step: a kitten walking the whole step never falls
     g = Game(1, []); c = Cat(g, g.lv, 320, 75); c.plane = 1; c.state = "walk"; g.all = [c]; g.cats = [c]
     fell = False

@@ -52,11 +52,15 @@ namespace Cattas
         Texture2D colourSource;      // where particle colours come from (the level picture)
         Color32[] colourPixels;
         // The standard "something was dug here" look (used for every dig: Litter Lord, Zoomies, Scratcher, ZAP...):
-        // a dark earthy hole with a bright cut edge, so you can always see where you've dug.
-        static readonly Color32 HoleInside = new Color32(54, 30, 24, 238);
-        static readonly Color32 HoleDeep = new Color32(34, 18, 15, 245);
-        static readonly Color32 HoleRim = new Color32(255, 222, 150, 255);
-        bool[] dug;
+        // a soft earthy hole that carries on down to the next surface, with loose crumbs of dirt at its lip.
+        static readonly Color32 HoleTop = new Color32(36, 21, 17, 246);       // darkest, under the lip
+        static readonly Color32 HoleBottom = new Color32(92, 58, 42, 240);    // lighter where the light reaches
+        static readonly Color32 Crumb1 = new Color32(112, 72, 52, 235);
+        static readonly Color32 Crumb2 = new Color32(146, 98, 70, 225);
+        const int ShaftMax = 44;     // how far a hole is drawn carrying on down through empty space
+        bool[] dug;                  // pixels dug out of the picture
+        bool[] deco;                 // pixels drawn only as decoration (the shaft below a hole, crumbs at its lip)
+        bool[] built;                // pixels that are hairball bridge
 
         public void Init(int width, int height, int artScale = 1)
         {
@@ -69,6 +73,8 @@ namespace Cattas
             planes = new byte[width * height];
             hard = new bool[width * height];
             dug = new bool[width * height];
+            deco = new bool[width * height];
+            built = new bool[width * height];
 
             texture = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
             {
@@ -296,11 +302,21 @@ namespace Cattas
                     int n = Noise(x, y) / 2;
                     planes[i] |= (byte)ActivePlane;
                     dug[i] = false;
+                    built[i] = true;
                     SetBlock(x, y, new Color32((byte)Mathf.Min(255, colour.r + n), (byte)Mathf.Min(255, colour.g + n),
                                                (byte)Mathf.Min(255, colour.b + n), 255));
                     needsRedraw = true;
                 }
             }
+            RefreshHoles(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+        }
+
+        // Is this pixel part of a hairball bridge? (kittens standing on one are a little better at stepping up)
+        public bool IsBuilt(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return false;
+            int i = y * Width + x;
+            return built[i] && (planes[i] & ActivePlane) != 0;
         }
 
         // Remove ground in a rectangle (x1/y1 not included). Stone is left alone.
@@ -328,28 +344,126 @@ namespace Cattas
             int i = y * Width + x;
             if ((planes[i] & ActivePlane) == 0 || hard[i]) return;
             planes[i] = (byte)(planes[i] & ~ActivePlane);
+            built[i] = false;
             if (planes[i] != 0) return;           // still solid in the other plane: the picture stays as it is
             if (overlayOnly) dug[i] = true;       // drawn by RefreshHoles
             else SetBlock(x, y, new Color32(0, 0, 0, 0));
             needsRedraw = true;
         }
 
-        // Draw the standard hole look: bright rim where a hole meets the picture, darker the further inside.
+        // Draw the standard hole look: a soft earthy hole (no outline), darker under the lip and lighter below,
+        // which carries on down through empty space to the next surface, with crumbs of dirt at the lip.
         void RefreshHoles(int x0, int y0, int x1, int y1)
         {
             if (!overlayOnly) return;
-            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+            int rx0 = Mathf.Max(0, x0 - 3), rx1 = Mathf.Min(Width, x1 + 3);
+            int ry0 = Mathf.Max(0, y0 - ShaftMax - 1), ry1 = Mathf.Min(Height, y1 + 4);
+
+            // 1. forget the old decoration in this area
+            for (int y = ry0; y < ry1; y++)
+                for (int x = rx0; x < rx1; x++)
+                {
+                    int i = y * Width + x;
+                    if (!deco[i]) continue;
+                    deco[i] = false;
+                    if (planes[i] == 0 && !dug[i]) SetBlock(x, y, new Color32(0, 0, 0, 0));
+                }
+
+            // 2. the holes themselves
+            for (int y = Mathf.Max(0, y0 - 1); y < Mathf.Min(Height, y1 + 1); y++)
             {
-                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                for (int x = rx0; x < rx1; x++)
                 {
                     int i = y * Width + x;
                     if (!dug[i]) continue;
-                    bool rim = !IsDug(x - 1, y) || !IsDug(x + 1, y) || !IsDug(x, y - 1) || !IsDug(x, y + 1);
-                    bool nearRim = !rim && (!IsDug(x - 2, y) || !IsDug(x + 2, y) || !IsDug(x, y - 2) || !IsDug(x, y + 2));
-                    SetBlock(x, y, rim ? HoleRim : nearRim ? HoleInside : HoleDeep);
+
+                    int d = 4;                                               // distance to the nearest hole edge (1..4)
+                    for (int k = 1; k <= 3 && d == 4; k++)
+                        if (!IsDug(x - k, y) || !IsDug(x + k, y) || !IsDug(x, y - k) || !IsDug(x, y + k)) d = k;
+                    int up = 0, down = 0;
+                    while (up < 24 && IsDug(x, y + up + 1)) up++;
+                    while (down < 24 && IsDug(x, y - down - 1)) down++;
+                    float frac = up + down == 0 ? 0.5f : up / (float)(up + down);   // 0 = top of the hole, 1 = bottom
+                    Color32 c = Color32.Lerp(HoleTop, HoleBottom, frac);
+                    float edge = Mathf.Clamp01((d - 1) / 2f);                // 0 at the edge, 1 inside
+                    float shade = 0.62f + 0.38f * edge;                      // soft inner shadow, no outline
+                    c = new Color32((byte)(c.r * shade), (byte)(c.g * shade), (byte)(c.b * shade), c.a);
+                    bool corner = (!IsDug(x - 1, y) || !IsDug(x + 1, y)) && (!IsDug(x, y - 1) || !IsDug(x, y + 1));
+                    if (d == 1) c.a = (byte)(corner ? 120 : 205);            // softly feathered edge
+                    SetBlock(x, y, c);
+                }
+            }
+
+            // 3. the hole carries on down to the next surface, and crumbs of dirt gather at the lip
+            for (int y = Mathf.Max(0, y0 - 1); y < Mathf.Min(Height, y1 + 1); y++)
+            {
+                for (int x = rx0; x < rx1; x++)
+                {
+                    int i = y * Width + x;
+                    if (!dug[i]) continue;
+
+                    if (!IsDug(x, y + 1) && y + 1 < Height && planes[(y + 1) * Width + x] == 0)
+                    {
+                        if (Noise(x, y) % 3 != 0) Decorate(x, y + 1, Crumb1);
+                        if (Noise(x + 7, y) % 4 == 0) Decorate(x, y + 2, Crumb2);
+                        if (!IsDug(x - 1, y))                                // a little mound at each end of the lip
+                        {
+                            Decorate(x - 1, y + 1, Crumb1); Decorate(x - 2, y + 1, Crumb2); Decorate(x - 1, y + 2, Crumb2);
+                        }
+                        if (!IsDug(x + 1, y))
+                        {
+                            Decorate(x + 1, y + 1, Crumb1); Decorate(x + 2, y + 1, Crumb2); Decorate(x + 1, y + 2, Crumb2);
+                        }
+                    }
+
+                    if (!IsDug(x, y - 1) && y - 1 >= 0 && planes[(y - 1) * Width + x] == 0)
+                    {
+                        int dl = 0, dr = 0;                                  // how far this column is from the sides of the hole
+                        while (dl < 4 && IsDug(x - dl - 1, y)) dl++;
+                        while (dr < 4 && IsDug(x + dr + 1, y)) dr++;
+                        float edge = Mathf.Clamp01((Mathf.Min(dl, dr)) / 2f);
+                        float shade = 0.62f + 0.38f * edge;
+                        int landed = -1;                                       // the row of the surface it lands on, if any
+                        int len = 0;                                           // how far the shaft runs through empty space
+                        while (len < ShaftMax)
+                        {
+                            int yy = y - len - 1;
+                            if (yy < 0) break;
+                            int j = yy * Width + x;
+                            if (planes[j] != 0 || dug[j]) { landed = yy; break; }   // reached the next surface
+                            len++;
+                        }
+                        for (int k = 1; k <= len; k++)
+                        {
+                            int yy = y - k;
+                            // darkest at the hole, softly fading away as it carries on down
+                            float t = k / (float)(len + 1);
+                            float alpha = 40f + 150f * Mathf.Pow(1f - t, 0.9f);
+                            var c = Color32.Lerp(HoleTop, HoleBottom, 0.25f + 0.5f * t);
+                            c = new Color32((byte)(c.r * shade), (byte)(c.g * shade), (byte)(c.b * shade), (byte)alpha);
+                            deco[yy * Width + x] = true;
+                            SetBlock(x, yy, c);
+                        }
+                        if (landed >= 0 && len > 0 && landed < Height - 1 && planes[landed * Width + x] != 0)
+                        {
+                            // a little pile of fallen dirt where the hole lands on the next surface
+                            int h = 1 + (Noise(x, y) % 3 == 0 ? 1 : 0) + (dl > 1 && dr > 1 ? 1 : 0);
+                            for (int m = 1; m <= h; m++) Decorate(x, landed + m, m == h ? Crumb2 : Crumb1, true);
+                        }
+                    }
                 }
             }
             needsRedraw = true;
+        }
+
+        // A decoration pixel (only drawn on empty ground that isn't part of the picture's collision)
+        void Decorate(int x, int y, Color32 c, bool overShaft = false)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return;
+            int i = y * Width + x;
+            if (planes[i] != 0 || dug[i] || (deco[i] && !overShaft)) return;
+            deco[i] = true;
+            SetBlock(x, y, c);
         }
 
         bool IsDug(int x, int y) => x >= 0 && x < Width && y >= 0 && y < Height && dug[y * Width + x];
