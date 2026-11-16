@@ -50,6 +50,23 @@ namespace Cattas
         public string foreground = "";
         public string stone = "";       // optional picture: its opaque parts can't be dug (painted levels)
 
+        // COLLISION-ONLY painted levels: the level picture (background) is never touched. This data picture says what is
+        // solid (opaque = solid, red = back plane, green = front plane, neither = both planes).
+        public string collision = "";
+        // Kittens that land at or below this height join the front plane (0 = no depth planes)
+        public int frontPlaneY;
+        // The part of the picture the camera may show (e.g. to leave out a strip). Empty = the whole picture.
+        public RectInt view;
+        public bool HasView => view.width > 0 && view.height > 0;
+        // Explicit hatches / goal zone / mother cat spot (instead of H / E markers in the text map)
+        public class HatchSpot { public int x, y, dir = 1; }
+        public readonly List<HatchSpot> hatches = new List<HatchSpot>();
+        public RectInt goal;
+        public bool HasGoal => goal.width > 0 && goal.height > 0;
+        public bool hasMum;
+        public Vector2Int mum;
+        public int mumFacing = -1;
+
         // Tutorial tips: "tip: <when> | <text>"  -  when = start, below <y>, saved <n>, used <Trait> <n>
         public class Tip { public string when = "start"; public string arg = ""; public int n; public string text = ""; }
         public readonly List<Tip> tips = new List<Tip>();
@@ -135,6 +152,32 @@ namespace Cattas
                     case "object": ParseObject(d, val); break;
                     case "background": d.background = val; break;
                     case "stone": d.stone = val; break;
+                    case "collision": d.collision = val; break;
+                    case "frontplane": int.TryParse(val, out d.frontPlaneY); break;
+                    case "view": d.view = ParseRect(val); break;
+                    case "goal": d.goal = ParseRect(val); break;
+                    case "hatch":
+                    {
+                        var h = val.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (h.Length >= 2 && int.TryParse(h[0], out int hx) && int.TryParse(h[1], out int hy))
+                        {
+                            var spot = new HatchSpot { x = hx, y = hy };
+                            if (h.Length > 2 && int.TryParse(h[2], out int hd)) spot.dir = hd < 0 ? -1 : 1;
+                            d.hatches.Add(spot);
+                        }
+                        break;
+                    }
+                    case "mum":
+                    {
+                        var m = val.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (m.Length >= 2 && int.TryParse(m[0], out int mx) && int.TryParse(m[1], out int my))
+                        {
+                            d.hasMum = true;
+                            d.mum = new Vector2Int(mx, my);
+                            if (m.Length > 2 && int.TryParse(m[2], out int mf)) d.mumFacing = mf < 0 ? -1 : 1;
+                        }
+                        break;
+                    }
                     case "tip":
                     {
                         int bar = val.IndexOf('|');
@@ -160,6 +203,15 @@ namespace Cattas
             foreach (var r in d.rows) cols = Mathf.Max(cols, r.Length);
             d.Cols = cols;
             return d;
+        }
+
+        static RectInt ParseRect(string val)
+        {
+            var a = val.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 4 && int.TryParse(a[0], out int x0) && int.TryParse(a[1], out int y0) &&
+                int.TryParse(a[2], out int x1) && int.TryParse(a[3], out int y1))
+                return new RectInt(Mathf.Min(x0, x1), Mathf.Min(y0, y1), Mathf.Abs(x1 - x0), Mathf.Abs(y1 - y0));
+            return new RectInt();
         }
 
         static void ParseObject(LevelData d, string val)

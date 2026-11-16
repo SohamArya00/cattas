@@ -16,7 +16,7 @@ class Level:
             if s.lower() == "map:": inmap = True; continue
             k, _, v = s.partition(":"); self.meta[k.strip().lower()] = v.strip()
         while rows and not rows[-1].strip(): rows.pop()
-        self.R = len(rows); self.C = max(len(r) for r in rows)
+        self.R = len(rows); self.C = max([len(r) for r in rows] or [0])
         self.W, self.H = self.C * CS, self.R * CS
         if "size" in self.meta:
             w, h = self.meta["size"].replace(",", " ").split()[:2]; self.W, self.H = int(w), int(h)
@@ -30,8 +30,30 @@ class Level:
             if st.startswith("object:"):
                 parts = st[7:].split()
                 self.objects.append([parts[0], int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), parts[5:] , True])
-        self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)
+        self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)   # solid: 1 back, 2 front, 3 both
+        self.plane = 3          # the plane of the cat being simulated (set by Cat.tick)
+        self.front_y = int(self.meta.get("frontplane", 0) or 0)
         self.hatches, self.exits = [], []
+        goals = []
+        for line in txt:
+            st = line.strip()
+            if st.startswith("hatch:"):
+                p = st[6:].replace(",", " ").split(); self.hatches.append((int(p[0]), int(p[1]), int(p[2]) if len(p) > 2 else 1))
+            if st.startswith("goal:"):
+                p = [int(v) for v in st[5:].replace(",", " ").split()[:4]]
+                goals.append((min(p[0], p[2]), min(p[1], p[3]), abs(p[2] - p[0]), abs(p[3] - p[1])))
+        coll = self.meta.get("collision", "")
+        if coll:
+            from PIL import Image
+            img = Image.open(os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Art", coll + ".bytes")).convert("RGBA")
+            px = img.load()
+            for y in range(self.H):
+                sy = min(img.height - 1, int((y + 0.5) * img.height / self.H))
+                for x in range(self.W):
+                    r, g, b, a = px[min(img.width - 1, int((x + 0.5) * img.width / self.W)), img.height - 1 - sy]
+                    if a > 127:
+                        m = (1 if r > 127 else 0) | (2 if g > 127 else 0)
+                        self.solid[y * self.W + x] = m or 3
         art = self.meta.get("foreground", "")
         if art:
             from PIL import Image
@@ -39,9 +61,9 @@ class Level:
             k = img.width // self.W; a = img.split()[3].load()
             for y in range(self.H):
                 for x in range(self.W):
-                    if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 1
+                    if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 3
         stone = self.meta.get("stone", "")
-        if art and stone:
+        if (art or coll) and stone:
             from PIL import Image
             img = Image.open(os.path.join(os.path.dirname(__file__), "..", "Assets", "Resources", "Art", stone + ".bytes")).convert("RGBA")
             a = img.split()[3].load()
@@ -54,12 +76,12 @@ class Level:
             y0 = (self.R - 1 - row) * CS
             for col, ch in enumerate(r):
                 x0 = col * CS
-                if art and ch == 'X':
+                if (art or coll) and ch == 'X':
                     for yy in range(y0, y0 + CS):
                         for xx in range(x0, x0 + CS):
                             if self.is_solid(xx, yy) and 0 <= xx < self.W and 0 <= yy < self.H: self.hard[yy * self.W + xx] = 1
                     continue
-                if art and ch not in 'HhE': continue
+                if (art or coll) and ch not in 'HhE': continue
                 if ch == '#': self.fill(x0, y0, x0 + CS, y0 + CS)
                 elif ch == 'X': self.fill(x0, y0, x0 + CS, y0 + CS, True)
                 elif ch in '/\\':
@@ -75,27 +97,29 @@ class Level:
                 a, b = cx - side * 6, cx + side * 26
                 wide.append((min(a, b), ey, abs(b - a), 12))
             self.exits = wide
+        self.exits += goals
         self.cats = int(self.meta.get("cats", 10)); self.need = int(self.meta.get("need", 5))
         self.rate = float(self.meta.get("rate", 1.5))
     def fill(self, x0, y0, x1, y1, hard=False):
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
-                self.solid[y * self.W + x] = 1
+                self.solid[y * self.W + x] = 3
                 if hard: self.hard[y * self.W + x] = 1
     def is_solid(self, x, y):
         if x < self.ax0 or x >= self.ax1: return True
         if y < self.ay0 or y >= self.ay1: return False
-        return self.solid[y * self.W + x] == 1
+        return (self.solid[y * self.W + x] & self.plane) != 0
     def is_hard(self, x, y):
         if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
-        return self.hard[y * self.W + x] == 1
+        i = y * self.W + x
+        return self.hard[i] == 1 and (self.solid[i] & self.plane) != 0
     def has_hard(self, x0, y0, x1, y1):
         return any(self.is_hard(x, y) for y in range(y0, y1) for x in range(x0, x1))
     def carve_rect(self, x0, y0, x1, y1):
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if not self.hard[i]: self.solid[i] = 0
+                if (self.solid[i] & self.plane) and not self.hard[i]: self.solid[i] &= ~self.plane & 3
     def carve_circle(self, cx, cy, r):
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
@@ -103,13 +127,15 @@ class Level:
     def add_rect(self, x0, y0, x1, y1):
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
-                self.solid[y * self.W + x] = 1
+                i = y * self.W + x
+                if not (self.hard[i] and self.solid[i]): self.solid[i] |= self.plane
     def at_exit(self, x, y):
         return any(ex <= x < ex + w and ey <= y < ey + h for ex, ey, w, h in self.exits)
 
 class Cat:
     def __init__(s, g, lv, x, y):
         s.g, s.lv, s.x, s.y, s.dir = g, lv, x, y, 1
+        s.plane = 1 if lv.front_y > 0 else 3
         s.state = "fall"; s.fd = 0; s.t = 0; s.chute = s.hasclimb = False
         s.fuse = -1; s.balls = 0; s.steps = 0
     def active(s): return s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch")
@@ -126,6 +152,10 @@ class Cat:
         if trait == "CableChewer" and s.fuse < 0: s.fuse = 150; return True
         return False
     def tick(s):
+        s.lv.plane = s.plane
+        try: s.tick_inner()
+        finally: s.lv.plane = 3
+    def tick_inner(s):
         lv = s.lv
         if s.active() and s.fuse > 0:
             s.fuse -= 1
@@ -166,7 +196,9 @@ class Cat:
         for _ in range(sp):
             if s.lv.is_solid(s.x, s.y - 1):
                 if s.fd > 60 and not s.chute: s.state = "splat"
-                else: s.state = "walk"
+                else:
+                    s.state = "walk"
+                    if s.plane == 1 and s.y <= s.lv.front_y: s.plane = 2
                 return
             s.y -= 1; s.fd += 1
     def dig(s):
@@ -292,20 +324,16 @@ if __name__ == "__main__":
     allok = True
     for n in range(1, 11):
         allok &= check(n, "no traits used (should FAIL)", expect_win=False)
-    allok &= check(1, "Dig 3 steps, then 2 bridges up to Mum", [
-        (lambda g, c: c.state == "walk" and c.y == 102 and 270 <= c.x <= 315, "LitterLord"),
-        (lambda g, c: c.state == "walk" and c.y == 79 and 270 <= c.x <= 315, "LitterLord"),
-        (lambda g, c: c.state == "walk" and c.y == 57 and 270 <= c.x <= 315, "LitterLord"),
-        (lambda g, c: c.state == "walk" and c.y == 42 and c.dir == 1 and 372 <= c.x <= 380, "HairballBridge"),
-        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")])
-    for x0 in (352, 362, 384):
-        allok &= check(1, f"...bridge started at x={x0} (3 clicks allowed)", [
-            (lambda g, c: c.state == "walk" and c.y == 102 and 270 <= c.x <= 315, "LitterLord"),
-            (lambda g, c: c.state == "walk" and c.y == 79 and 270 <= c.x <= 315, "LitterLord"),
-            (lambda g, c: c.state == "walk" and c.y == 57 and 270 <= c.x <= 315, "LitterLord"),
-            (lambda g, c, x0=x0: c.state == "walk" and c.y == 42 and c.dir == 1 and c.x == x0, "HairballBridge"),
-            (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge"),
-            (lambda g, c: c.state == "build" and c.balls <= 2 and c.x < 462, "HairballBridge")])
+    def l1(x0, extra_clicks=2):
+        plan = [(lambda g, c: c.state == "walk" and c.y == 116 and 282 <= c.x <= 296, "LitterLord"),
+                (lambda g, c: c.state == "walk" and c.y == 94 and 318 <= c.x <= 332, "LitterLord"),
+                (lambda g, c: c.state == "walk" and c.y == 71 and 350 <= c.x <= 364, "LitterLord"),
+                (lambda g, c, x0=x0: c.state == "walk" and c.y == 54 and c.dir == 1 and c.x == x0, "HairballBridge")]
+        plan += [(lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")] * extra_clicks
+        return plan
+    for x0 in (376, 384, 392, 360):
+        allok &= check(1, f"Dig 3 steps, bridge from x={x0} (+2 clicks)", l1(x0, 2))
+    allok &= check(1, "bridge from x=392, no extra clicks (should FAIL: too short)", l1(392, 0), expect_win=False)
     allok &= check(2, "Fluffchute every cat", [(lambda g, c: c.state in ("walk", "fall") and not c.chute, "Fluffchute")] * 10)
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])

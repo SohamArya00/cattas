@@ -24,7 +24,10 @@ namespace Cattas
         DiggableGround ground;
         Sprite catSprite;
         Sprite[] catFrames;          // painted kitten animation (if the art exists)
-        public CatRig KittenRig { get; private set; }   // paper-doll kitten (preferred when available)
+        public CatRig KittenRig { get; private set; }
+        // Depth planes: kittens start in the back plane when the level has a front floor, otherwise in both
+        public int StartPlane => level != null && level.frontPlaneY > 0 ? DiggableGround.Back : DiggableGround.Both;
+        public int FrontPlaneY => level != null ? level.frontPlaneY : 0;   // paper-doll kitten (preferred when available)
         Sprite particleSprite, flashSprite;
         Texture2D menuBackdrop;
         bool hasKitchenDemo;
@@ -196,7 +199,7 @@ namespace Cattas
         void StartLevel(int number, string file)
         {
             var data = LevelData.Load(file);
-            if (data == null || data.Rows == 0 || data.Cols == 0)
+            if (data == null || data.PixelWidth == 0 || data.PixelHeight == 0)
             {
                 Debug.LogError($"Cattas: couldn't load level '{file}' (Assets/Resources/Levels/{file}.txt)");
                 mode = GameMode.Menu;
@@ -268,13 +271,31 @@ namespace Cattas
                 bsr.sortingOrder = -10;
             }
 
+            // Collision-only painted level: the picture stays untouched; invisible collision sits on top of it
+            Texture2D collisionArt = Art.Load(level.collision);
+            if (collisionArt != null)
+                artScale = Mathf.Max(1, Mathf.RoundToInt(collisionArt.width / (float)levelWidth));
+
             var groundObj = new GameObject("Ground");
             groundObj.transform.SetParent(levelRoot, false);
             ground = groundObj.AddComponent<DiggableGround>();
             ground.Init(levelWidth, levelHeight, artScale);
+            if (collisionArt != null)
+            {
+                ground.ApplyCollision(collisionArt);
+                Destroy(collisionArt);
+                ground.SetColourSource(bgArt);
+                var stoneArt0 = Art.Load(level.stone);
+                if (stoneArt0 != null)
+                {
+                    ground.MakeHardFromArt(stoneArt0);
+                    Destroy(stoneArt0);
+                }
+                painted = true;
+            }
             playArea = level.HasArea ? level.area : new RectInt(0, 0, levelWidth, levelHeight);
             ground.SetPlayArea(playArea);
-            if (painted)
+            if (fgArt != null)
             {
                 ground.ApplyArt(fgArt);
                 Destroy(fgArt);
@@ -313,6 +334,11 @@ namespace Cattas
             }
             ground.FinishPainting();
 
+            // Hatches, goal zone and mother cat given directly in the level file
+            foreach (var h in level.hatches) AddHatch(h.x, h.y + 2, h.dir);
+            if (level.HasGoal) exitZones.Add(level.goal);
+            if (level.hasMum) MakeMother(level.mum.x, level.mum.y, level.mumFacing);
+
             if (spawnPoints.Count == 0) AddHatch(levelWidth / 4, levelHeight - 40);
             if (level.HasArea) DimOutsideArea();
 
@@ -323,7 +349,7 @@ namespace Cattas
             if (preview)
             {
                 viewH = MaxView;
-                camPos = new Vector2(levelWidth / 2f, levelHeight / 2f);
+                camPos = ViewRect.center;
                 mode = GameMode.Preview;
             }
             else
@@ -377,13 +403,7 @@ namespace Cattas
                 int away = hatchX <= centreX ? 1 : -1;
                 float mumX = centreX + away * 13f;
                 int mumY = SurfaceBelow((int)mumX, floorY + 12, floorY - 12, floorY);
-                var mum = new GameObject("Mother Cat");
-                mum.transform.SetParent(levelRoot, false);
-                mum.transform.localPosition = new Vector3(mumX, mumY, 0f);
-                mum.transform.localScale = new Vector3(2.3f, 2.3f, 1f);
-                motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 4);
-                motherCat.mother = true;
-                motherCat.flip = away > 0;
+                MakeMother(mumX, mumY, -away);
                 int bowlY = SurfaceBelow(centreX, floorY + 12, floorY - 12, floorY);
                 MakeBox("Milk bowl", new Vector2Int(centreX - 6, bowlY), 13, 4, new Color32(238, 150, 165, 255), 6);
                 MakeBox("Milk", new Vector2Int(centreX - 5, bowlY + 3), 11, 2, new Color32(255, 252, 245, 255), 7);
@@ -400,6 +420,19 @@ namespace Cattas
                 MakeBox("Exit Door", new Vector2Int(centreX - 5, floorY), 10, 14, new Color32(40, 25, 20, 255), 2);
             }
             exitZones.Add(zone);
+        }
+
+        // Mum: a big version of the kitten sitting at the given spot, facing 'facing' (1 = right, -1 = left)
+        void MakeMother(float x, float y, int facing)
+        {
+            if (KittenRig == null) return;
+            var mum = new GameObject("Mother Cat");
+            mum.transform.SetParent(levelRoot, false);
+            mum.transform.localPosition = new Vector3(x, y, 0f);
+            mum.transform.localScale = new Vector3(2.3f, 2.3f, 1f);
+            motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 4);
+            motherCat.mother = true;
+            motherCat.flip = facing < 0;
         }
 
         // The first standing spot found going down from 'top' to 'bottom' (e.g. the top of a stool)
@@ -756,10 +789,12 @@ namespace Cattas
         RectInt playArea;         // NG0 play area (the whole level unless the level file sets "area:")
 
         // While looking around you can see the whole picture; while playing the camera stays on the play area.
-        Rect CamBounds => mode == GameMode.Preview || mode == GameMode.Menu
-            ? new Rect(0, 0, levelWidth, levelHeight)
+        Rect ViewRect => level != null && level.HasView
+            ? new Rect(level.view.x, level.view.y, level.view.width, level.view.height)
+            : new Rect(0, 0, levelWidth, levelHeight);
+        Rect CamBounds => mode == GameMode.Preview || mode == GameMode.Menu || !level.HasArea ? ViewRect
             : new Rect(playArea.x, playArea.y, playArea.width, playArea.height);
-        Rect AreaRect => new Rect(playArea.x, playArea.y, playArea.width, playArea.height);
+        Rect AreaRect => level.HasArea ? new Rect(playArea.x, playArea.y, playArea.width, playArea.height) : ViewRect;
 
         float MaxViewFor(Rect b) => Mathf.Max(b.height / (1f - BottomUI) * 1.02f, b.width / cam.aspect);
         float MinView => 140f;

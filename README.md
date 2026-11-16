@@ -63,6 +63,8 @@ The top has settings, then `map:` and a picture of the level. Each character is 
 | `H` / `h` | hatch – cats drop out of here walking right (`H`) or left (`h`) |
 | `E` | exit – put ground under it |
 
+**Collision-only painted levels (artwork never touched):** `background:` is the picture exactly as supplied; `collision:` is an invisible data picture saying what's solid (opaque = solid; red = back plane only; green = front plane only; yellow = both); `stone:` marks what can't be dug; `frontplane: <y>` = kittens landing at or below this height join the front plane (the floor, in front of the steps); `hatch: x y dir`, `goal: x0 y0 x1 y1` (the exit zone), `mum: x y facing`; `view: x0 y0 x1 y1` limits what the camera shows (e.g. to leave out a strip) without editing the picture. Dug holes and hairballs are drawn as an overlay on top of the picture.
+
 Settings: `name`, `hint`, `stone` (picture marking what can't be dug in painted levels), `tip` (tutorial tips, e.g. `tip: below 48 | On the floor!`; conditions: `start`, `below <y>`, `saved <n>`, `used <Trait> <n>`, `bridges <n>`), `area` (NG0 play area inside the picture: `x0 y0 x1 y1`), `exit` (`house`, `mother` or `litter`), `size` (e.g. `960 540`, for painted levels), `par` (target seconds for the speed-run goal), `cats`, `need`, `rate` (seconds between cats), `time` (seconds), `traits` (e.g. `LitterLord=3, Fluffchute=2`), and optional `speed` (starting game speed in %, 50 = normal; players can only speed up from there).
 Maps are normally 45 rows tall; make them wider than 80 columns for a scrolling level.
 

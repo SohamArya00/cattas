@@ -124,10 +124,11 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - Music & SFX – TBD name
 
 ## Level 1 – The Bath Steps (1960s bathroom)
-- Each room can be a different era; the bathroom is 1960s.
-- Play area: the bath steps, rug and stool. The rest of the bathroom is the dimmed NG+ area.
-- Kittens tumble out of a towel on the bath onto the top step. Mum sits on the stool with her milk.
-- Teaches **Litter Lord** (dig down the three steps) then **Hairball Bridge** (build up to the stool; click the builder again to keep building). Paw prints on the floor show where to start the bridge. Tips appear as the player progresses. Starts at 40% speed.
+- Each room can be a different era; the bathroom is 1960s. **The artwork is never edited** – the game puts invisible collision on top (see CLAUDE.md rule).
+- **Fully open:** the whole picture is the level; you can zoom out and look/scroll anywhere. Only the traits you're given limit where kittens can go. Big objects (toilet, vanity, plant pot, laundry basket, floor) already have collision for future NG+ routes.
+- **Depth planes (2.5D):** kittens start in the *back* plane (steps) and join the *front* plane when they land on the floor. They walk **behind** the stool on the steps and **in front of** the steps on the floor.
+- Kittens drop off the plant pot's rim and head right; they're trapped between the pot and the towel on the top step. The next two steps run behind the stool to the vanity, which blocks them; the tile wall at each step's left end turns them back. On the floor the toilet (left) and the stool's leg (right) block them.
+- Teaches **Litter Lord** (dig down the three steps; offset your holes or following kittens fall 62px and splat!) then **Hairball Bridge** (build up to Mum on the stool; click the builder again to keep building). Mum sits on the stool.
 - Mum's moods: watches, grooms, gets excited when kittens are near, bounces and mews when one arrives, droops when one is lost, celebrates a win.
 
 ## Done this session

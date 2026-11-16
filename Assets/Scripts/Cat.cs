@@ -77,6 +77,7 @@ namespace Cattas
             frames = animFrames != null && animFrames.Length >= 6 ? animFrames : null;
             this.game = game;
             this.ground = ground;
+            plane = game.StartPlane;
             x = startX;
             y = startY;
             State = CatState.Falling;
@@ -105,7 +106,19 @@ namespace Cattas
             transform.localPosition = Vector3.Lerp(prevPos, curPos, GameBootstrap.TickAlpha);
         }
 
+        // Depth plane: 1 = back, 2 = front, 3 = both (ordinary levels). Painted 2.5D levels start kittens in the
+        // back plane; landing on the front floor moves them to the front plane (see DiggableGround).
+        int plane = DiggableGround.Both;
+        public int Plane => plane;
+
         public void Tick()
+        {
+            ground.ActivePlane = plane;   // everything this kitten touches this step uses its own plane
+            TickInner();
+            ground.ActivePlane = DiggableGround.Both;
+        }
+
+        void TickInner()
         {
             // Cable Chewer countdown runs whatever else the cat is doing
             if (IsActive && fuseTicks > 0 && --fuseTicks == 0)
@@ -531,6 +544,8 @@ namespace Cattas
             {
                 State = CatState.Walking;
                 puffed = false;
+                // landed on the front floor: from now on this kitten lives in front of the steps
+                if (plane == DiggableGround.Back && y <= game.FrontPlaneY) plane = DiggableGround.Front;
             }
         }
 
