@@ -47,6 +47,7 @@ shapes = [
     (772, 640, 790, T1,                BACK,  False, "towel hanging over the bath"),
     (1070, 625, 1540, FLOOR_TOP,       BOTH,  True,  "vanity unit"),
     (938, 790, 962, FLOOR_TOP + 4,     FRONT, True,  "stool's left front leg"),
+    (934, 735, 1104, 792,              FRONT, True,  "stool cushion (a bridge must reach its top, not pass through it)"),
     (45, 572, 155, 700,                BOTH,  True,  "toilet cistern"),
     (62, 690, 196, FLOOR_TOP,          BOTH,  True,  "toilet bowl"),
     (196, 690, 228, 722,               BOTH,  True,  "toilet seat"),
@@ -126,8 +127,8 @@ traits: LitterLord=6, HairballBridge=8
 tip: start | The kittens drop off the plant pot and get stuck between the pot and the towel. Pick LITTER LORD, then click a kitten to dig down. Dig away from the pot's edge!
 tip: below 104 | Down one step - but they're boxed in again. Dig down again!
 tip: below 82 | One more step to go. Dig through to the floor!
-tip: below 62 | On the floor! Mum's stool is too high to jump. Pick HAIRBALL BRIDGE and click a kitten walking towards the stool.
-tip: bridges 1 | Hrrk! That bridge isn't tall enough. Click the builder AGAIN to keep it building up towards Mum!
+tip: below 62 | On the floor! Mum's stool is too high to jump. Pick HAIRBALL BRIDGE and click a kitten while it's out on the rug, well before the stool.
+tip: bridges 1 | Hrrk! A bridge needs to reach the top of the stool. Click the builder AGAIN before it walks off to keep it building - you get a moment after each batch!
 tip: saved 1 | A kitten made it to Mum! Get the rest home too.
 map:
 """

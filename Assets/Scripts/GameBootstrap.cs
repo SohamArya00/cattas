@@ -940,12 +940,40 @@ namespace Cattas
                 ZoomAt(1f + z * 1.5f * Time.unscaledDeltaTime, new Vector2(Screen.width / 2f, Screen.height / 2f));
         }
 
+        // Push the mouse against the edge of the screen to scroll that way (faster the closer to the edge)
+        void EdgeScroll()
+        {
+            if (mode != GameMode.Playing && mode != GameMode.Preview) return;
+            if (!Application.isFocused) return;
+            Vector2 m;
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse == null) return;
+            m = mouse.position.ReadValue();
+#else
+            m = Input.mousePosition;
+#endif
+            if (m.x < 0f || m.y < 0f || m.x > Screen.width || m.y > Screen.height) return;   // mouse is outside the game
+            float edge = Mathf.Max(20f, Screen.height * 0.03f);
+            float h = 0f, v = 0f;
+            if (m.x < edge) h = -(1f - m.x / edge);
+            else if (m.x > Screen.width - edge) h = 1f - (Screen.width - m.x) / edge;
+            float vEdge = edge * 0.6f;                       // the trait bar is at the bottom, so keep that band slim
+            if (m.y < vEdge) v = -(1f - m.y / vEdge);
+            else if (m.y > Screen.height - edge) v = 1f - (Screen.height - m.y) / edge;
+            if (h == 0f && v == 0f) return;
+            camPos += new Vector2(h, v) * viewH * 0.9f * Time.unscaledDeltaTime;
+            camFlying = false;
+            ClampCam();
+        }
+
         // ---------- Game loop ----------
         void Update()
         {
             if (mode == GameMode.Menu || levelRoot == null) return;
 
             KeyboardCamera();
+            EdgeScroll();
             if (camFlying)
             {
                 float k = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
@@ -1638,6 +1666,16 @@ namespace Cattas
                 if (fuse <= 0) continue;
                 Vector3 p = cam.WorldToScreenPoint(new Vector3(cat.X + 0.5f, cat.Y + 18f, 0f));
                 GUI.Label(new Rect(p.x - fs, Screen.height - p.y - fs, fs * 2, fs * 2), fuse.ToString(), fuseStyle);
+            }
+
+            // A bridge builder that has finished waits a moment: tell the player they can click again
+            var againStyle = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(fs * 0.8f) };
+            againStyle.normal.textColor = new Color(1f, 0.95f, 0.6f);
+            foreach (var cat in cats)
+            {
+                if (!cat.BridgeWaiting) continue;
+                Vector3 p = cam.WorldToScreenPoint(new Vector3(cat.X + 0.5f, cat.Y + 20f, 0f));
+                ShadowLabel(new Rect(p.x - fs * 5, Screen.height - p.y - fs, fs * 10, fs * 2), "More? Click!", againStyle);
             }
 
             HandleCameraMouse();

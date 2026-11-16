@@ -128,7 +128,7 @@ class Level:
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if not (self.hard[i] and self.solid[i]): self.solid[i] |= self.plane
+                if not (self.solid[i] & self.plane): self.solid[i] |= self.plane
     def at_exit(self, x, y):
         return any(ex <= x < ex + w and ey <= y < ey + h for ex, ey, w, h in self.exits)
 
@@ -145,7 +145,7 @@ class Cat:
         if trait == "BiscuitBaker" and st == "walk": s.state = "block"; return True
         if trait == "Zoomies" and st == "walk": s.state = "zoom"; s.t = 0; return True
         if trait == "Scratcher" and st == "walk": s.state = "scratch"; s.t = 0; return True
-        if trait == "HairballBridge" and st == "build": s.balls += 12; return True
+        if trait == "HairballBridge" and st == "build": s.balls += 12; s.pause = 0; s.t = 0; return True
         if trait == "HairballBridge" and st == "walk": s.state = "build"; s.balls = 12; s.t = 0; s.steps = 0; return True
         if trait == "Fluffchute" and not s.chute and st in ("walk", "fall", "dig"): s.chute = True; return True
         if trait == "CurtainClimber" and not s.hasclimb and st != "block": s.hasclimb = True; return True
@@ -250,14 +250,15 @@ class Cat:
         if not lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0; return
         if s.steps > 0:
             nx = s.x + s.dir
-            if nx < lv.ax0 or nx >= lv.ax1 or lv.is_solid(nx, s.y + 10) or lv.is_solid(nx, s.y + 3):
-                s.dir = -s.dir; s.state = "walk"; return
-            if lv.is_solid(nx, s.y):
-                h = 1
-                while h <= 2 and lv.is_solid(nx, s.y + h): h += 1
-                s.y += h
-            s.x = nx; s.steps -= 1
-            if s.steps == 0 and s.balls == 0: s.state = "walk"
+            if nx < lv.ax0 or nx >= lv.ax1: s.dir = -s.dir; s.state = "walk"; return
+            h = 0
+            while h <= 6 and lv.is_solid(nx, s.y + h): h += 1
+            if h > 6 or lv.is_solid(nx, s.y + h + 10): s.dir = -s.dir; s.state = "walk"; return
+            s.x = nx; s.y += h; s.steps -= 1
+            return
+        if s.balls <= 0:                      # wait a second for the player to click again
+            s.pause = getattr(s, "pause", 0) + 1
+            if s.pause >= 30: s.state = "walk"
             return
         s.t += 1
         if s.t < 30: return
@@ -331,9 +332,10 @@ if __name__ == "__main__":
                 (lambda g, c, x0=x0: c.state == "walk" and c.y == 53 and c.dir == 1 and c.x == x0, "HairballBridge")]
         plan += [(lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")] * extra_clicks
         return plan
-    for x0 in (376, 384, 392, 360):
+    for x0 in (376, 368, 360, 340):
         allok &= check(1, f"Dig 3 steps, bridge from x={x0} (+2 clicks)", l1(x0, 2))
     allok &= check(1, "bridge from x=392, no extra clicks (should FAIL: too short)", l1(392, 0), expect_win=False)
+    allok &= check(1, "bridge from x=392 too late: bumps the cushion (should FAIL)", l1(392, 2), expect_win=False)
     # the stool leg must not leave a gap in the bottom step: a kitten walking the whole step never falls
     g = Game(1, []); c = Cat(g, g.lv, 320, 75); c.plane = 1; c.state = "walk"; g.all = [c]; g.cats = [c]
     fell = False

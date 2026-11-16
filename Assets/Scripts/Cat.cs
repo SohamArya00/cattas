@@ -45,7 +45,9 @@ namespace Cattas
         int zoomTimer;
         bool hasClimber;    // permanent once given
         int climbTimer;
-        int hairballsLeft, hackTimer, bridgeStepsLeft;
+        int hairballsLeft, hackTimer, bridgeStepsLeft, bridgePause;
+        public const int BridgePauseTicks = GameBootstrap.TicksPerSecond;   // one more second to click again
+        public bool BridgeWaiting => State == CatState.Building && bridgeStepsLeft == 0 && hairballsLeft <= 0;
         int scratchTimer;
         int fuseTicks = -1;  // Cable Chewer countdown (-1 = not chewing)
         Color baseTint;      // the cat's normal colour
@@ -203,11 +205,14 @@ namespace Cattas
                     if (State == CatState.Building)
                     {
                         hairballsLeft += HairballsPerBridge;
+                        bridgePause = 0;
+                        hackTimer = 0;
                         return true;
                     }
                     if (State != CatState.Walking) return false;
                     State = CatState.Building;
                     hairballsLeft = HairballsPerBridge;
+                    bridgePause = 0;
                     hackTimer = 0;
                     bridgeStepsLeft = 0;
                     return true;
@@ -432,26 +437,36 @@ namespace Cattas
                 return;
             }
 
-            // Walking up onto the hairball we just made, one pixel per step
+            // Walking up onto the hairball we just made, one pixel per step - and obeying the same rules as any kitten:
+            // low things in front are stepped up, walls and ceilings stop the bridge (the kitten turns round).
             if (bridgeStepsLeft > 0)
             {
                 int nextX = x + dir;
-                if (nextX < ground.MinX || nextX >= ground.MaxX || ground.IsSolid(nextX, y + CatHeight) || ground.IsSolid(nextX, y + HairballHeight + 1))
+                if (nextX < ground.MinX || nextX >= ground.MaxX)
                 {
-                    // Bumped into something - stop building and turn round
                     dir = -dir;
                     State = CatState.Walking;
                     return;
                 }
-                if (ground.IsSolid(nextX, y))
+                int h = 0;
+                while (h <= MaxStepUp && ground.IsSolid(nextX, y + h)) h++;
+                if (h > MaxStepUp || ground.IsSolid(nextX, y + h + CatHeight))
                 {
-                    int h = 1;
-                    while (h <= HairballHeight && ground.IsSolid(nextX, y + h)) h++;
-                    y += h;
+                    // Bumped into something solid - stop building and turn round
+                    dir = -dir;
+                    State = CatState.Walking;
+                    return;
                 }
                 x = nextX;
+                y += h;
                 bridgeStepsLeft--;
-                if (bridgeStepsLeft == 0 && hairballsLeft == 0) State = CatState.Walking;
+                return;
+            }
+
+            // All the hairballs are done: wait here a moment so the player has time to click again for more
+            if (hairballsLeft <= 0)
+            {
+                if (++bridgePause >= BridgePauseTicks) State = CatState.Walking;
                 return;
             }
 
@@ -459,6 +474,7 @@ namespace Cattas
             if (++hackTimer < TicksPerHairball) return;
             hackTimer = 0;
 
+            // Hairballs can't be coughed up inside solid things (the grounds skips pixels that are already solid)
             int a = x + dir, b = x + dir * HairballWidth;
             ground.AddRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + HairballHeight, HairballColour);
             game.Fx(FxKind.Hairball, x + dir * 4, y + 1);

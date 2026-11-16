@@ -5,6 +5,8 @@ A cat-themed puzzle-platformer: guide a stream of cats safely home by giving the
 Made with **Unity 6** (Universal 2D / URP).
 
 ## Status
+**Controls:** push the mouse against a screen edge to scroll that way; WASD/arrows and right-drag also scroll; wheel or +/- zooms.
+
 **Kitchen demo ✅** – big painted kitchen (960×540) with zoom/scroll camera, minimap, look-around preview, hazards (full sink, gas hob, metal fridge), a gas valve switch, knock-over props hiding 3 secrets, goals/trophies, animated kittens, particles and sound effects.
 
 **Levels ✅** – level select with saved progress, timer, win/lose screens, scrolling camera, stone blocks, and 10 starter levels that introduce the traits one by one.

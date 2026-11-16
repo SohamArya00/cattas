@@ -292,7 +292,7 @@ namespace Cattas
                 for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
                 {
                     int i = y * Width + x;
-                    if (hard[i] && Solid(i)) continue;
+                    if ((planes[i] & ActivePlane) != 0) continue;   // already solid for this kitten: no hairballs inside solid things
                     int n = Noise(x, y) / 2;
                     planes[i] |= (byte)ActivePlane;
                     dug[i] = false;
