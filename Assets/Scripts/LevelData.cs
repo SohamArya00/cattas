@@ -53,6 +53,9 @@ namespace Cattas
         // COLLISION-ONLY painted levels: the level picture (background) is never touched. This data picture says what is
         // solid (opaque = solid, red = back plane, green = front plane, neither = both planes).
         public string collision = "";
+        // OCCLUSION: a data picture outlining things kittens in the back plane walk BEHIND (e.g. the stool). The game
+        // re-draws exactly those pixels of the (untouched) level picture in front of those kittens.
+        public string occlusion = "";
         // Kittens that land at or below this height join the front plane (0 = no depth planes)
         public int frontPlaneY;
         // The part of the picture the camera may show (e.g. to leave out a strip). Empty = the whole picture.
@@ -153,6 +156,7 @@ namespace Cattas
                     case "background": d.background = val; break;
                     case "stone": d.stone = val; break;
                     case "collision": d.collision = val; break;
+                    case "occlusion": d.occlusion = val; break;
                     case "frontplane": int.TryParse(val, out d.frontPlaneY); break;
                     case "view": d.view = ParseRect(val); break;
                     case "goal": d.goal = ParseRect(val); break;

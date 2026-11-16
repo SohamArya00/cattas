@@ -8,8 +8,9 @@ size: 836 471
 view: 0 19 836 471
 background: bathroom_bg
 collision: bathroom_collision
+occlusion: bathroom_occlusion
 stone: bathroom_stone
-frontplane: 58
+frontplane: 57
 hatch: 247 164 1
 goal: 462 100 552 170
 mum: 510 101 -1
@@ -23,8 +24,8 @@ exit: mother
 markers: off
 traits: LitterLord=6, HairballBridge=8
 tip: start | The kittens drop off the plant pot and get stuck between the pot and the towel. Pick LITTER LORD, then click a kitten to dig down. Dig away from the pot's edge!
-tip: below 100 | Down one step - but they're boxed in again. Dig down again!
-tip: below 80 | One more step to go. Dig through to the floor!
+tip: below 104 | Down one step - but they're boxed in again. Dig down again!
+tip: below 82 | One more step to go. Dig through to the floor!
 tip: below 62 | On the floor! Mum's stool is too high to jump. Pick HAIRBALL BRIDGE and click a kitten walking towards the stool.
 tip: bridges 1 | Hrrk! That bridge isn't tall enough. Click the builder AGAIN to keep it building up towards Mum!
 tip: saved 1 | A kitten made it to Mum! Get the rest home too.

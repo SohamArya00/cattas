@@ -118,6 +118,13 @@ namespace Cattas
             SetColor(startTint);
         }
 
+        SortingGroup group;
+        public void SetOrder(int order)
+        {
+            if (group == null) group = GetComponent<SortingGroup>();
+            if (group != null) group.sortingOrder = order;
+        }
+
         public void SetColor(Color c)
         {
             tint = c;

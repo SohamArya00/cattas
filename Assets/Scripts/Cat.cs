@@ -118,6 +118,14 @@ namespace Cattas
             ground.ActivePlane = DiggableGround.Both;
         }
 
+        // Draw order: back-plane kittens (5) are hidden by things like the stool (6); Mum (7); front-plane kittens (8)
+        void ApplyDrawOrder()
+        {
+            int order = plane == DiggableGround.Front ? 8 : 5;
+            if (puppet != null) puppet.SetOrder(order);
+            else if (sr != null) sr.sortingOrder = order;
+        }
+
         void TickInner()
         {
             // Cable Chewer countdown runs whatever else the cat is doing
@@ -545,7 +553,7 @@ namespace Cattas
                 State = CatState.Walking;
                 puffed = false;
                 // landed on the front floor: from now on this kitten lives in front of the steps
-                if (plane == DiggableGround.Back && y <= game.FrontPlaneY) plane = DiggableGround.Front;
+                if (plane == DiggableGround.Back && y <= game.FrontPlaneY) { plane = DiggableGround.Front; ApplyDrawOrder(); }
             }
         }
 

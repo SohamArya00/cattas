@@ -31,8 +31,8 @@ def ly(y): return (H - y) / SCALE     # picture y (down) -> level y (up)
 BACK, FRONT, BOTH = (255, 0, 0, 255), (0, 255, 0, 255), (255, 255, 0, 255)
 
 # ---- invisible collision shapes: (x0, y0, x1, y1, plane colour, stone?, note) ---------------------
-FLOOR_TOP = 832                       # where kittens' feet touch the floor (the stool legs meet the floor here)
-T1, T2, T3 = 708, 753, 798            # where kittens' feet touch the three bath steps
+FLOOR_TOP = 834                       # where kittens' feet touch the floor (the stool legs meet the floor here)
+T1, T2, T3 = 700, 745, 790            # the lit top edge of each step: where kittens' feet touch it
 TH = 16                               # tread thickness (thin ledges: dig one and you drop to the next)
 STEP_END = 1075                       # the steps run behind the stool until they meet the vanity
 shapes = [
@@ -46,33 +46,54 @@ shapes = [
     (460, 628, 528, T1,                BOTH,  True,  "plant pot (kittens drop off its rim)"),
     (772, 640, 790, T1,                BACK,  False, "towel hanging over the bath"),
     (1070, 625, 1540, FLOOR_TOP,       BOTH,  True,  "vanity unit"),
-    (938, 790, 962, FLOOR_TOP + 6,     FRONT, True,  "stool's left front leg"),
+    (938, 790, 962, FLOOR_TOP + 4,     FRONT, True,  "stool's left front leg"),
     (45, 572, 155, 700,                BOTH,  True,  "toilet cistern"),
     (62, 690, 196, FLOOR_TOP,          BOTH,  True,  "toilet bowl"),
     (196, 690, 228, 722,               BOTH,  True,  "toilet seat"),
     (1550, 710, 1650, FLOOR_TOP,       BOTH,  True,  "laundry basket"),
 ]
 
-coll = Image.new("RGBA", (W, H + 1), (0, 0, 0, 0))         # +1 row on top so it lines up with the picture exactly
-stone = Image.new("RGBA", (W, H + 1), (0, 0, 0, 0))
-cd, sd = ImageDraw.Draw(coll), ImageDraw.Draw(stone)
+solid = np.zeros((H + 1, W), np.uint8)          # +1 row on top so it lines up with the picture exactly
+stone_a = np.zeros((H + 1, W), np.uint8)
 for x0, y0, x1, y1, colour, is_stone, note in shapes:
-    box = [x0, y0 + 1, x1 - 1, y1]                           # +1: collision image has one extra row on top
-    cd.rectangle(box, fill=colour)
-    if is_stone: sd.rectangle(box, fill=(255, 255, 255, 255))
+    bits = (1 if colour[0] else 0) | (2 if colour[1] else 0)
+    solid[y0 + 1:y1 + 1, x0:x1] |= bits           # OR: shapes overlap without erasing each other
+    if is_stone: stone_a[y0 + 1:y1 + 1, x0:x1] = 255
+cr = np.zeros((H + 1, W, 4), np.uint8)
+cr[..., 0] = np.where(solid & 1, 255, 0); cr[..., 1] = np.where(solid & 2, 255, 0); cr[..., 3] = np.where(solid > 0, 255, 0)
+coll = Image.fromarray(cr, "RGBA")
+st = np.zeros((H + 1, W, 4), np.uint8); st[..., :3] = 255; st[..., 3] = stone_a
+stone = Image.fromarray(st, "RGBA")
 for name, im in (("bathroom_collision", coll), ("bathroom_stone", stone)):
     im.save(os.path.join(ART, name + ".bytes"), format="PNG", optimize=True)
+
+# ---- the stool's outline (data only): the game re-draws exactly these pixels of the picture in front of the kittens
+#      on the steps, so they walk BEHIND the stool. Nothing in the picture is changed.
+K = 4
+occ = Image.new("L", (W * K, H * K), 0); od = ImageDraw.Draw(occ)
+def rr(x0, y0, x1, y1, r): od.rounded_rectangle([x0 * K, y0 * K, x1 * K, y1 * K], radius=r * K, fill=255)
+def pg(pts): od.polygon([(x * K, y * K) for x, y in pts], fill=255)
+rr(934, 735, 1104, 792, 11)                                    # cushion
+rr(957, 711, 1071, 741, 9)                                     # folded towel on top
+pg([(948, 788), (965, 788), (954, 835), (942, 835)])           # left front leg
+pg([(1005, 790), (1021, 790), (1018, 842), (1008, 842)])       # middle leg
+pg([(1019, 790), (1031, 790), (1029, 829), (1022, 829)])       # back leg behind it
+pg([(1071, 789), (1091, 789), (1096, 836), (1085, 836)])       # right front leg
+pg([(1098, 787), (1116, 787), (1104, 816), (1097, 816)])       # far right leg
+occ = occ.resize((W, H), Image.LANCZOS)
+Image.merge("RGBA", (occ, occ, occ, occ)).save(os.path.join(ART, "bathroom_occlusion.bytes"), format="PNG", optimize=True)
 
 # a review picture (NOT used by the game): collision drawn over the untouched picture
 review = src.copy()
 ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 ov.paste(coll.crop((0, 1, W, H + 1)), (0, 0))
+oc = Image.new("RGBA", (W, H), (0, 255, 255, 0)); oc.putalpha(occ.point(lambda v: 90 if v > 127 else 0))
 ov.putalpha(ov.split()[3].point(lambda v: 110 if v else 0))
-Image.alpha_composite(review, ov).save(os.path.join(HERE, "bathroom_collision_review.png"))
+Image.alpha_composite(Image.alpha_composite(review, ov), oc).save(os.path.join(HERE, "bathroom_collision_review.png"))
 
 # ---- the level file ---------------------------------------------------------------------------
 hatch_x, hatch_y = lx(494), ly(612)                           # kittens appear above the plant pot and drop onto its rim
-goal = (lx(924), ly(738) - 1, lx(1104), ly(600))              # Mum's seat: x 462-552, from the cushion top upwards
+goal = (lx(924), ly(738) - 1, lx(1104), ly(600))              # Mum's seat: x 462-552, from the cushion top upwards (the middle step is lower)
 mum_x, mum_y = lx(1020), ly(738)
 view = (0, int(ly(904)) + 1, GW, GH)                          # camera never shows the strip below the floor
 front_y = int(ly(FLOOR_TOP)) + 4
@@ -87,6 +108,7 @@ size: {GW} {GH}
 view: {view[0]} {view[1]} {view[2]} {view[3]}
 background: bathroom_bg
 collision: bathroom_collision
+occlusion: bathroom_occlusion
 stone: bathroom_stone
 frontplane: {front_y}
 hatch: {int(hatch_x)} {int(hatch_y)} 1
@@ -102,8 +124,8 @@ exit: mother
 markers: off
 traits: LitterLord=6, HairballBridge=8
 tip: start | The kittens drop off the plant pot and get stuck between the pot and the towel. Pick LITTER LORD, then click a kitten to dig down. Dig away from the pot's edge!
-tip: below 100 | Down one step - but they're boxed in again. Dig down again!
-tip: below 80 | One more step to go. Dig through to the floor!
+tip: below 104 | Down one step - but they're boxed in again. Dig down again!
+tip: below 82 | One more step to go. Dig through to the floor!
 tip: below 62 | On the floor! Mum's stool is too high to jump. Pick HAIRBALL BRIDGE and click a kitten walking towards the stool.
 tip: bridges 1 | Hrrk! That bridge isn't tall enough. Click the builder AGAIN to keep it building up towards Mum!
 tip: saved 1 | A kitten made it to Mum! Get the rest home too.

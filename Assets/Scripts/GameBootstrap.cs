@@ -271,6 +271,9 @@ namespace Cattas
                 bsr.sortingOrder = -10;
             }
 
+            // Things kittens in the back plane walk BEHIND (e.g. a stool): the level picture's own pixels, re-drawn on top
+            if (bgArt != null && !string.IsNullOrEmpty(level.occlusion)) MakeOccluder(bgArt, level.occlusion);
+
             // Collision-only painted level: the picture stays untouched; invisible collision sits on top of it
             Texture2D collisionArt = Art.Load(level.collision);
             if (collisionArt != null)
@@ -422,6 +425,49 @@ namespace Cattas
             exitZones.Add(zone);
         }
 
+        // Re-draws parts of the level picture (outlined by a data mask) in front of back-plane kittens.
+        // This does NOT change the artwork: it shows the same pixels again, at the same place, one layer higher.
+        void MakeOccluder(Texture2D picture, string maskName)
+        {
+            var mask = Art.Load(maskName);
+            if (mask == null) return;
+            var pic = picture.GetPixels32();
+            var m = mask.GetPixels32();
+            int pw = picture.width, ph = picture.height;
+            if (mask.width != pw || mask.height != ph) { Destroy(mask); return; }
+            int minX = pw, minY = ph, maxX = -1, maxY = -1;
+            for (int y = 0; y < ph; y++)
+                for (int x = 0; x < pw; x++)
+                    if (m[y * pw + x].a > 0)
+                    {
+                        if (x < minX) minX = x; if (x > maxX) maxX = x;
+                        if (y < minY) minY = y; if (y > maxY) maxY = y;
+                    }
+            Destroy(mask);
+            if (maxX < 0) return;
+            int w = maxX - minX + 1, h = maxY - minY + 1;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    var c = pic[(y + minY) * pw + (x + minX)];
+                    c.a = m[(y + minY) * pw + (x + minX)].a;
+                    px[y * w + x] = c;
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false);
+            levelTextures.Add(tex);
+            float ppu = pw / (float)levelWidth;
+            var go = new GameObject("Stool in front of the steps");
+            go.transform.SetParent(levelRoot, false);
+            go.transform.localPosition = new Vector3(minX / ppu, minY / ppu, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Sprite.Create(tex, new Rect(0, 0, w, h), Vector2.zero, ppu);
+            sr.material = SpriteMaterial;
+            sr.sortingOrder = 6;
+        }
+
         // Mum: a big version of the kitten sitting at the given spot, facing 'facing' (1 = right, -1 = left)
         void MakeMother(float x, float y, int facing)
         {
@@ -430,7 +476,7 @@ namespace Cattas
             mum.transform.SetParent(levelRoot, false);
             mum.transform.localPosition = new Vector3(x, y, 0f);
             mum.transform.localScale = new Vector3(2.3f, 2.3f, 1f);
-            motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 4);
+            motherCat = CatPuppet.Create(mum.transform, KittenRig, Color.white, 7);
             motherCat.mother = true;
             motherCat.flip = facing < 0;
         }

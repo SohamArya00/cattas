@@ -325,15 +325,22 @@ if __name__ == "__main__":
     for n in range(1, 11):
         allok &= check(n, "no traits used (should FAIL)", expect_win=False)
     def l1(x0, extra_clicks=2):
-        plan = [(lambda g, c: c.state == "walk" and c.y == 116 and 282 <= c.x <= 296, "LitterLord"),
-                (lambda g, c: c.state == "walk" and c.y == 94 and 318 <= c.x <= 332, "LitterLord"),
-                (lambda g, c: c.state == "walk" and c.y == 71 and 350 <= c.x <= 364, "LitterLord"),
-                (lambda g, c, x0=x0: c.state == "walk" and c.y == 54 and c.dir == 1 and c.x == x0, "HairballBridge")]
+        plan = [(lambda g, c: c.state == "walk" and c.y == 120 and 282 <= c.x <= 296, "LitterLord"),
+                (lambda g, c: c.state == "walk" and c.y == 98 and 318 <= c.x <= 332, "LitterLord"),
+                (lambda g, c: c.state == "walk" and c.y == 75 and 350 <= c.x <= 364, "LitterLord"),
+                (lambda g, c, x0=x0: c.state == "walk" and c.y == 53 and c.dir == 1 and c.x == x0, "HairballBridge")]
         plan += [(lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")] * extra_clicks
         return plan
     for x0 in (376, 384, 392, 360):
         allok &= check(1, f"Dig 3 steps, bridge from x={x0} (+2 clicks)", l1(x0, 2))
     allok &= check(1, "bridge from x=392, no extra clicks (should FAIL: too short)", l1(392, 0), expect_win=False)
+    # the stool leg must not leave a gap in the bottom step: a kitten walking the whole step never falls
+    g = Game(1, []); c = Cat(g, g.lv, 320, 75); c.plane = 1; c.state = "walk"; g.all = [c]; g.cats = [c]
+    fell = False
+    for t in range(30 * 40):
+        c.tick()
+        if c.state == "fall": fell = True
+    print(("OK   " if not fell else "FAIL ") + "L01     bottom step has no gap under the stool leg"); allok &= not fell
     allok &= check(2, "Fluffchute every cat", [(lambda g, c: c.state in ("walk", "fall") and not c.chute, "Fluffchute")] * 10)
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])

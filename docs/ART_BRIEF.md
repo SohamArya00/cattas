@@ -13,6 +13,15 @@ This brief is for **placeholder AI art now** and for the **human artist later**.
 ## The golden rule: keep the layout
 The game's kittens walk on the furniture, so **everything must stay where the layout guide puts it**: the worktop height, the fridge, the sink, the shelf, the cat tree and so on. Changing colours, textures and details is great. Moving or resizing things isn't.
 
+## 0. Levels as layered files (best for the game, and the easiest for the artist)
+Each room works best when delivered as **layers** (a layered PSD/Procreate/Krita file, or separate PNGs), all the **same size**:
+1. **Background**: the whole room.
+2. **Foreground cut-outs**: things kittens walk *behind* (e.g. a stool, a chair front, a curtain), on transparent, in the right place. Today Claude has to trace these by hand.
+3. **Walking surfaces**: clearly drawn edges for each floor, step, shelf or ledge (a lit top edge works well), at the height a kitten's feet should touch.
+4. **Depth**: say which things are in front and which are behind (e.g. floor in front, steps behind).
+5. **Solid walls**: make walls, furniture and edges where kittens turn around obvious.
+The clearer the walking lines are in the picture, the fewer guesses are needed. **Dug holes:** the game draws a standard "dug hole" overlay for now; an artist can design a nicer one later.
+
 ## 1. Kitchen level (the most important one)
 **Start from:** `docs/kitchen_layout_guide.png`
 

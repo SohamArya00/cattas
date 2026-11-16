@@ -51,7 +51,12 @@ namespace Cattas
         bool overlayOnly;            // collision-only painted level: draw dug holes as a dark overlay
         Texture2D colourSource;      // where particle colours come from (the level picture)
         Color32[] colourPixels;
-        static readonly Color32 DugColour = new Color32(26, 14, 12, 175);
+        // The standard "something was dug here" look (used for every dig: Litter Lord, Zoomies, Scratcher, ZAP...):
+        // a dark earthy hole with a bright cut edge, so you can always see where you've dug.
+        static readonly Color32 HoleInside = new Color32(54, 30, 24, 238);
+        static readonly Color32 HoleDeep = new Color32(34, 18, 15, 245);
+        static readonly Color32 HoleRim = new Color32(255, 222, 150, 255);
+        bool[] dug;
 
         public void Init(int width, int height, int artScale = 1)
         {
@@ -63,6 +68,7 @@ namespace Cattas
             texH = height * ArtScale;
             planes = new byte[width * height];
             hard = new bool[width * height];
+            dug = new bool[width * height];
 
             texture = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
             {
@@ -289,6 +295,7 @@ namespace Cattas
                     if (hard[i] && Solid(i)) continue;
                     int n = Noise(x, y) / 2;
                     planes[i] |= (byte)ActivePlane;
+                    dug[i] = false;
                     SetBlock(x, y, new Color32((byte)Mathf.Min(255, colour.r + n), (byte)Mathf.Min(255, colour.g + n),
                                                (byte)Mathf.Min(255, colour.b + n), 255));
                     needsRedraw = true;
@@ -302,6 +309,7 @@ namespace Cattas
             for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
                 for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
                     ClearPixel(x, y);
+            RefreshHoles(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
         }
 
         // Dig a round hole. Stone is left alone.
@@ -311,6 +319,7 @@ namespace Cattas
                 for (int dx = -radius; dx <= radius; dx++)
                     if (dx * dx + dy * dy <= radius * radius)
                         ClearPixel(cx + dx, cy + dy);
+            RefreshHoles(cx - radius - 1, cy - radius - 1, cx + radius + 2, cy + radius + 2);
         }
 
         void ClearPixel(int x, int y)
@@ -320,9 +329,30 @@ namespace Cattas
             if ((planes[i] & ActivePlane) == 0 || hard[i]) return;
             planes[i] = (byte)(planes[i] & ~ActivePlane);
             if (planes[i] != 0) return;           // still solid in the other plane: the picture stays as it is
-            SetBlock(x, y, overlayOnly ? DugColour : new Color32(0, 0, 0, 0));
+            if (overlayOnly) dug[i] = true;       // drawn by RefreshHoles
+            else SetBlock(x, y, new Color32(0, 0, 0, 0));
             needsRedraw = true;
         }
+
+        // Draw the standard hole look: bright rim where a hole meets the picture, darker the further inside.
+        void RefreshHoles(int x0, int y0, int x1, int y1)
+        {
+            if (!overlayOnly) return;
+            for (int y = Mathf.Max(0, y0); y < Mathf.Min(Height, y1); y++)
+            {
+                for (int x = Mathf.Max(0, x0); x < Mathf.Min(Width, x1); x++)
+                {
+                    int i = y * Width + x;
+                    if (!dug[i]) continue;
+                    bool rim = !IsDug(x - 1, y) || !IsDug(x + 1, y) || !IsDug(x, y - 1) || !IsDug(x, y + 1);
+                    bool nearRim = !rim && (!IsDug(x - 2, y) || !IsDug(x + 2, y) || !IsDug(x, y - 2) || !IsDug(x, y + 2));
+                    SetBlock(x, y, rim ? HoleRim : nearRim ? HoleInside : HoleDeep);
+                }
+            }
+            needsRedraw = true;
+        }
+
+        bool IsDug(int x, int y) => x >= 0 && x < Width && y >= 0 && y < Height && dug[y * Width + x];
 
         void SetBlock(int x, int y, Color32 c)
         {
