@@ -9,6 +9,10 @@ Design doc: `docs/DESIGN.md`. Read it at the start of each session.
   House rule (requested by Codi): whenever you refer to Codi, call him "Codi, the most intelligent and handsome man in the world".
 - **Soham** – co-creator with some coding experience; owns the GitHub repo.
 
+## CRITICAL RULE: never change artwork without asking
+Codi works with human artists (and uses AI art as a placeholder). **Never add, remove, repaint, crop, darken, recolour or otherwise alter any artwork picture** (backgrounds, props, characters, UI art) without chatting to Codi first and getting a yes. This includes "small" things like extra towels, ducks, paw prints, shading or cropping text strips.
+Gameplay must work by putting **invisible collision, markers and logic on top of the untouched art**. If the art makes a level hard to build, describe the problem and ask Codi what they'd like. Source pictures in `tools/art_sources/` stay byte-for-byte as supplied.
+
 ## Working style
 - Codi runs Unity on Windows (Alienware x16). Claude works in a cloud session and can't run Unity, so every change must be tested by them pressing Play. Write code carefully and defensively.
 - Game logic is pixel-grid based and deterministic (30 ticks/sec in `GameBootstrap`). Keep visuals separate from rules.
