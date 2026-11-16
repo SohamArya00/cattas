@@ -12,6 +12,12 @@ stone: bathroom2_stone
 path: tub 386.40 208.75 103.50 5.25 closed M B
 railblock: 338 214 373 252 tub back
 railblock: 441 215 468 252 tub back
+path: lid 81.00 165.00 34.00 4.50 closed M B
+path: sink 644.75 221.00 47.00 2.50 closed M B
+path: stool 578.00 125.50 37.00 4.50 closed F F
+path: lampL 312.05 396.12 41.40 36.50 open 45 135 B B slide
+path: lampR 704.05 408.40 26.00 25.40 open 45 135 B B slide
+railblock: 631 222 668 253 sink back
 hatch: 484 250 1
 goal: 541 192 770 215
 cats: 10

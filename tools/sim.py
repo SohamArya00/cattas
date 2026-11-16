@@ -51,7 +51,7 @@ class Level:
                 lane = lambda t: {'b': 1, 'back': 1, 'f': 2, 'front': 2, 'm': 4, 'mid': 4}.get(t.lower(), 0)
                 self.paths.append(dict(name=q[0], cx=float(q[1]), cy=float(q[2]), a=float(q[3]), b=float(q[4]), closed=closed,
                                        d0=math.radians(float(q[6])) if (not closed and len(q) > 7) else 0.0, d1=math.radians(float(q[7])) if (not closed and len(q) > 7) else 2 * math.pi,
-                                       fl=lane(q[nxt]) if len(q) > nxt + 1 else 0, bl=lane(q[nxt + 1]) if len(q) > nxt + 1 else 0))
+                                       fl=lane(q[nxt]) if len(q) > nxt + 1 else 0, bl=lane(q[nxt + 1]) if len(q) > nxt + 1 else 0, slide="slide" in [t.lower() for t in q[nxt:]]))
             if st.startswith("railblock:"):
                 q = st[10:].split(); self.railblocks.append((int(q[0]), int(q[1]), int(q[2]), int(q[3]), q[4] if len(q) > 4 else "", q[5].lower() if len(q) > 5 else ""))
             if st.startswith("goal:"):
@@ -272,7 +272,9 @@ class Cat:
                 return
         sp = math.sqrt(p["a"] ** 2 * math.sin(s.theta) ** 2 + p["b"] ** 2 * math.cos(s.theta) ** 2)
         nt = s.theta + s.rsign / max(0.5, sp)
-        if not p["closed"] and (nt < p["d0"] or nt > p["d1"]): s.rsign = -s.rsign; return
+        if not p["closed"] and (nt < p["d0"] or nt > p["d1"]):
+            if p.get("slide"): s.state = "fall"; s.fd = 0; s.rail = -1; s.grace = 30; return
+            s.rsign = -s.rsign; return
         nx, ny = int(math.floor(p["cx"] + p["a"] * math.cos(nt) + 0.5)), int(math.floor(p["cy"] + p["b"] * math.sin(nt) + 0.5))
         blocked = any(c is not s and c.state == "block" and abs(c.x - nx) <= 4 and abs(c.y - ny) <= 8 for c in s.g.cats)
         for (x0, y0, x1, y1, nm, side) in s.lv.railblocks:
@@ -302,6 +304,8 @@ class Cat:
                 return
             s.x = nx; s.y += h; return
         s.x = nx
+        for d in range(4):
+            if lv.is_solid(s.x, s.y - 1 - d): s.y -= d; return
         for d in range(4):
             if lv.is_support(s.x, s.y - 1 - d): s.y -= d; s.adopt(s.x, s.y - 1); return
         s.state = "fall"; s.fd = 0
@@ -495,6 +499,32 @@ if __name__ == "__main__":
     g2 = Game(2, plan2); g2.max_ticks = 30 * 200; r2 = g2.run()[0]
     ok = r2.get("saved", 0) >= 1 and all(c.state != "splat" for c in g2.all if c.chute)
     print(("OK   " if ok else "FAIL ") + f"L02     Fluffchute kittens never splat off the bridge, at least one reaches the counter {r2}"); allok &= ok
+    # ---- Level 2: every surface can be reached and behaves (one kitten dropped from above each) ----
+    def drop(x, y, dirn=1, secs=40, pln=()):
+        g_ = Game(2, list(pln)); g_.lv.hatches = [(x, y, dirn)]; g_.lv.cats = 1; g_.max_ticks = 30 * secs
+        tr = []; o = Cat.tick
+        def t_(c_): o(c_); tr.append((c_.state, c_.x, c_.y, c_.rail if c_.state == "rail" else -1))
+        Cat.tick = t_; g_.run(); Cat.tick = o
+        return tr
+    def pid(name): return [i for i, p in enumerate(Level(2).paths) if p["name"] == name][0]
+    for nm, (px, py) in {"lid": (81, 175), "sink": (600, 235)}.items():
+        tr = drop(px, py, 1, 20); ok = tr[-1][0] == "rail" and tr[-1][3] == pid(nm)
+        print(("OK   " if ok else "FAIL ") + f"L02     kitten dropped above the {nm} lands on its path and runs round it {tr[-1]}"); allok &= ok
+    for nm, (px, py) in {"lampL": (312, 440), "lampR": (704, 440)}.items():
+        tr = drop(px, py, 1, 30); on = any(t[0] == "rail" and t[3] == pid(nm) for t in tr)
+        ok = on and tr[-1][0] in ("walk", "fall", "splat") and tr[-1][3] == -1
+        print(("OK   " if ok else "FAIL ") + f"L02     {nm}: kitten lands on top of the light, then slides off it {tr[-1]} (on the cap: {on})"); allok &= ok
+    # dais: walking the lower tier from its left end carries a kitten along the whole curved lip, onto the stool and round its top
+    tr = drop(150, 175, 1, 60); xs = [t[1] for t in tr]; stool = any(t[3] == pid("stool") for t in tr)
+    ok = max(xs) >= 520 and stool
+    print(("OK   " if ok else "FAIL ") + f"L02     dais lower tier curve: walks to x={max(xs)}, steps onto the stool and runs its top ({stool})"); allok &= ok
+    # shelves / ledges: kitten dropped just above each ends up standing ON it
+    ledges = {"left shelf 1": (60, 400, 386), "left shelf 2": (60, 320, 306), "gold shelf A": (520, 350, 337), "gold shelf B": (520, 305, 292), "window bar 1": (420, 390, 378),
+              "window bar 2": (420, 340, 328), "window bar 3": (420, 290, 277), "cat frame top": (170, 355, 342), "right sconce top": (738, 380, 367), "niche shelf 1": (800, 265, 252)}
+    for nm, (px, py, top) in ledges.items():
+        tr = drop(px, py, 1, 3); land = [t for t in tr if t[0] == "walk"]
+        ok = bool(land) and abs(land[0][2] - top) <= 3
+        print(("OK   " if ok else "FAIL ") + f"L02     ledge '{nm}': dropped kitten lands on it (feet y {land[0][2] if land else None}, wanted {top})"); allok &= ok
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])
     allok &= check(5, "Climber for every cat", [(lambda g, c: not c.hasclimb and c.state in ("walk", "fall"), "CurtainClimber")] * 10)

@@ -1,16 +1,28 @@
-# Level 2 layers and surfaces
+# Level 2 layers and surfaces (Codi's physics test bed)
 
-Three invisible depth lanes sit over the untouched picture. A kitten stands on a surface in ANY lane (`lanejump: on`) and
-then adopts that lane, so it can walk from surface to surface.
+Three invisible depth lanes sit over the untouched picture. A kitten is blocked only by walls in its own lane, but it can
+stand on a surface from ANY lane and then moves into that lane. Curved things are either a **path** (an ellipse kittens run
+round) or a **curved lip** (a painted collision outline that kittens simply walk along).
 
-| Lane | Colour in collision file | What lives there |
+| Lane | What lives there |
+|---|---|
+| Front (F) | floor, stool (cushion, legs) |
+| Mid (M) | lower dais tier, tub body, plant pot, toilet bowl + seat, vanity, sink bowl |
+| Back (B) | upper dais tier (it sits BEHIND the lower one), taps, vases, window sill + 4 window bars, shelves, frame tops, sconces, tile top edge, hanging lights |
+
+## Surfaces
+| Surface | Kind | Notes |
 |---|---|---|
-| Front (F) | green | floor (y>=785 px), stool cushion and legs |
-| Mid (M) | blue | dais tiers, tub body, plant pot, toilet, vanity counter/cabinet/legs, sink bowl |
-| Back (B) | red | taps, tub vase, sink faucet, vanity vase, window sill, grab bar, shelves, frame tops, sconce tops |
-| Rim ring | M + B | tub rim: one loop path, kittens circle it for ever |
+| Tub rim | closed path (M front / B back) | loops for ever; taps + vase block the back edge |
+| Toilet seat | closed path | back edge runs into the tank, so it ping-pongs |
+| Sink rim | closed path | faucet blocks the back edge |
+| Stool top | closed path (F) | reached by walking off the dais' right end |
+| Dais lower tier / upper tier | curved lip | upper tier is only reachable by falling onto it (>60px from the rim: Fluffchute) |
+| Hanging lights | open arc 45-135 deg, SLIDE | kittens land on the cap and slide off; soft globe (diggable), hard brass bottom ring |
+| Shelves, window bars, frame tops, sconce tops, tile edge, sill, grab bar, vanity top | flat ledges | |
 
-Moves between surfaces: fall or step off any edge onto the next surface below; Hairball Bridge builds fur stairs (the
-other kittens now step onto them off the rim); Zoomies opens the rim's back edge; Curtain Climber (max 100px) scales soft walls.
-Fluffchute makes drops over 60px safe. Kittens that run onto an unfinished bridge fall through the gap: wait or use a chute.
-Still to do: toilet lid, sink rim, stool top, dais arcs, lamp spheres.
+Not walkable on purpose: mirror (glass), window glass, rug, floor tiles can't be dug.
+
+Moves between surfaces: step/fall off an edge onto whatever is below; Hairball Bridge (stairs, other kittens follow them);
+Zoomies; Curtain Climber (soft walls only, max 100px); Fluffchute (drops over 60px).
+Measurements are by eye from 2x crops (+-3 picture px). Still to do: gold bands on the lights, hollow light interior.

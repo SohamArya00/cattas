@@ -631,7 +631,19 @@ namespace Cattas
             float nt = railTheta + railSign / Mathf.Max(0.5f, path.Speed(railTheta));
             if (!path.closed)
             {
-                if (nt < path.deg0 * Mathf.Deg2Rad || nt > path.deg1 * Mathf.Deg2Rad) { railSign = -railSign; return; }
+                if (nt < path.deg0 * Mathf.Deg2Rad || nt > path.deg1 * Mathf.Deg2Rad)
+                {
+                    if (path.slide)      // too steep to stand on: off we go
+                    {
+                        State = CatState.Falling;
+                        fallDistance = 0;
+                        railIndex = -1;
+                        railGrace = 30;
+                        return;
+                    }
+                    railSign = -railSign;
+                    return;
+                }
             }
             var p = path.Point(nt);
             int nx = Mathf.RoundToInt(p.x), ny = Mathf.RoundToInt(p.y);
@@ -686,7 +698,9 @@ namespace Cattas
             }
 
             x = nextX;
-            // Is there ground just below us?
+            // Is there ground just below us? Our own lane's surface comes first (so we don't hover on the edge of another lane's wall)
+            for (int d = 0; d <= MaxStepDown; d++)
+                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
             for (int d = 0; d <= MaxStepDown; d++)
             {
                 if (ground.IsSupport(x, y - 1 - d)) { y -= d; AdoptLane(x, y - 1); return; }

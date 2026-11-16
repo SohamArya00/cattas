@@ -29,6 +29,7 @@ namespace Cattas
         public float cx, cy, a = 1f, b = 1f;
         public bool closed = true;
         public float deg0, deg1 = 360f;
+        public bool slide;                    // open path: kittens that reach an end slide off (falling) instead of turning round
         public int frontLane, backLane;       // depth lanes (bits) of the front half and the back half (0 = leave the kitten's lane alone)
         public Vector2 Point(float t) => new Vector2(cx + a * Mathf.Cos(t), cy + b * Mathf.Sin(t));
         // length of path per unit of angle (so a kitten moves 1 pixel of arc per step)
@@ -215,6 +216,7 @@ namespace Cattas
                                 next = 8;
                             }
                             if (q.Length > next + 1) { rp.frontLane = LaneBit(q[next]); rp.backLane = LaneBit(q[next + 1]); }
+                            for (int k = next; k < q.Length; k++) if (q[k].ToLowerInvariant() == "slide") rp.slide = true;
                             d.paths.Add(rp);
                         }
                         break;
