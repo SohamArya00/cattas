@@ -375,7 +375,7 @@ class Cat:
             h = 0
             lim = s.step_limit()
             while h <= lim and lv.is_solid(nx, s.y + h): h += 1
-            if h > lim or lv.is_solid(nx, s.y + h + 10): s.dir = -s.dir; s.state = "walk"; return
+            if h > lim or lv.is_solid(nx, s.y + h + 6): s.dir = -s.dir; s.state = "walk"; return
             s.x = nx; s.y += h; s.steps -= 1
             return
         if s.balls <= 0:                      # wait a second for the player to click again

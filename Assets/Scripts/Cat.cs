@@ -485,7 +485,8 @@ namespace Cattas
                 int h = 0;
                 int limit = StepLimit;
                 while (h <= limit && ground.IsSolid(nextX, y + h)) h++;
-                if (h > limit || ground.IsSolid(nextX, y + h + CatHeight))
+                // Corners and rounded edges are forgiven: the top 4 pixels of head room (ears) may overlap a curved edge
+                if (h > limit || ground.IsSolid(nextX, y + h + CatHeight - 4))
                 {
                     // Bumped into something solid - stop building and turn round
                     dir = -dir;
