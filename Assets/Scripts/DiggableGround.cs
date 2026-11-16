@@ -311,6 +311,16 @@ namespace Cattas
             RefreshHoles(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
         }
 
+        // How many solid pixels are inside a rectangle (any plane) - used to see if a vase or faucet is still there
+        public int CountSolid(RectInt r)
+        {
+            int n = 0;
+            for (int y = Mathf.Max(0, r.yMin); y < Mathf.Min(Height, r.yMax); y++)
+                for (int x = Mathf.Max(0, r.xMin); x < Mathf.Min(Width, r.xMax); x++)
+                    if (planes[y * Width + x] != 0) n++;
+            return n;
+        }
+
         // Is this pixel part of a hairball bridge? (kittens standing on one are a little better at stepping up)
         public bool IsBuilt(int x, int y)
         {

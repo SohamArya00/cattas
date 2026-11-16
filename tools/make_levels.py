@@ -20,7 +20,7 @@ class Map:
         return "\n".join("".join(r) for r in self.g)
 
 def write(n, name, hint, cats, need, traits, m, time=300, rate=1.5):
-    if n == 1: return   # Level 1 is now the painted bathroom level (tools/make_bathroom_level.py)
+    if n in (1, 2): return   # Level 1 and 2 are painted bathroom levels (tools/make_bathroom_level.py, tools/make_level2.py)
     t = ", ".join(f"{k}={v}" for k, v in traits.items())
     body = f"""// Cattas level {n}
 // Map key:  .=air  #=dirt  X=stone (can't dig)  /=ramp up-right  \\=ramp up-left  H=hatch  E=exit

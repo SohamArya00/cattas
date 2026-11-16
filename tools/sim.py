@@ -35,11 +35,18 @@ class Level:
         self.built = bytearray(self.W * self.H)   # hairball bridge pixels
         self.front_y = int(self.meta.get("frontplane", 0) or 0)
         self.hatches, self.exits = [], []
+        self.paths, self.railblocks = [], []     # path: dict(name, cx, cy, a, b, closed, d0, d1)
         goals = []
         for line in txt:
             st = line.strip()
             if st.startswith("hatch:"):
                 p = st[6:].replace(",", " ").split(); self.hatches.append((int(p[0]), int(p[1]), int(p[2]) if len(p) > 2 else 1))
+            if st.startswith("path:"):
+                q = st[5:].split()
+                self.paths.append(dict(name=q[0], cx=float(q[1]), cy=float(q[2]), a=float(q[3]), b=float(q[4]), closed=q[5].lower() != "open",
+                                       d0=math.radians(float(q[6])) if len(q) > 7 else 0.0, d1=math.radians(float(q[7])) if len(q) > 7 else 2 * math.pi))
+            if st.startswith("railblock:"):
+                q = st[10:].split(); self.railblocks.append((int(q[0]), int(q[1]), int(q[2]), int(q[3]), q[4] if len(q) > 4 else "", q[5].lower() if len(q) > 5 else ""))
             if st.startswith("goal:"):
                 p = [int(v) for v in st[5:].replace(",", " ").split()[:4]]
                 goals.append((min(p[0], p[2]), min(p[1], p[3]), abs(p[2] - p[0]), abs(p[3] - p[1])))
@@ -130,6 +137,12 @@ class Level:
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
                 if not (self.solid[i] & self.plane): self.solid[i] |= self.plane; self.built[i] = 1
+    def count_solid(self, x0, y0, x1, y1):
+        n = 0
+        for y in range(max(0, y0), min(self.H, y1)):
+            for x in range(max(0, x0), min(self.W, x1)):
+                if self.solid[y * self.W + x]: n += 1
+        return n
     def is_built(self, x, y):
         if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
         i = y * self.W + x
@@ -143,9 +156,17 @@ class Cat:
         s.plane = 1 if lv.front_y > 0 else 3
         s.state = "fall"; s.fd = 0; s.t = 0; s.chute = s.hasclimb = False
         s.fuse = -1; s.balls = 0; s.steps = 0
+        s.rail = -1; s.rsign = 1; s.theta = 0.0; s.grace = 0; s.cstart = 0
     def step_limit(s): return 9 + (4 if s.lv.is_built(s.x, s.y - 1) or s.lv.is_built(s.x, s.y - 2) else 0)
-    def active(s): return s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch")
+    def active(s): return s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch", "rail")
     def give(s, trait):
+        if s.state == "rail" and trait not in ("Fluffchute", "CurtainClimber", "CableChewer"):
+            s.state = "walk"; s.rail = -1; s.grace = 90          # steps off the rim to use the trait
+            up = 0
+            while up < 3 and s.lv.is_solid(s.x, s.y + up): up += 1
+            s.y += up
+            for d in range(4):
+                if s.lv.is_solid(s.x, s.y - 1 - d): s.y -= d; break
         st = s.state
         if trait == "LitterLord" and st == "walk": s.state = "dig"; s.t = 0; return True
         if trait == "BiscuitBaker" and st == "walk": s.state = "block"; return True
@@ -153,7 +174,7 @@ class Cat:
         if trait == "Scratcher" and st == "walk": s.state = "scratch"; s.t = 0; return True
         if trait == "HairballBridge" and st == "build": s.balls += 12; s.pause = 0; s.t = 0; return True
         if trait == "HairballBridge" and st == "walk": s.state = "build"; s.balls = 12; s.t = 0; s.steps = 0; return True
-        if trait == "Fluffchute" and not s.chute and st in ("walk", "fall", "dig"): s.chute = True; return True
+        if trait == "Fluffchute" and not s.chute and st in ("walk", "fall", "dig", "rail"): s.chute = True; return True
         if trait == "CurtainClimber" and not s.hasclimb and st != "block": s.hasclimb = True; return True
         if trait == "CableChewer" and s.fuse < 0: s.fuse = 150; return True
         return False
@@ -170,7 +191,7 @@ class Cat:
                 for o in lv.objects:
                     if o[0] == "trap" and o[6] and ((o[1] + o[3]) / 2 - s.x) ** 2 + ((o[2] + o[4]) / 2 - s.y - 1) ** 2 <= 22 * 22: o[6] = False
                 return
-        getattr(s, s.state)() if s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch") else None
+        ({"rail": s.rail_tick}.get(s.state) or getattr(s, s.state))() if s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch", "rail") else None
         if s.active():
             if lv.at_exit(s.x, s.y): s.state = "saved"
             elif s.y < lv.ay0 - 20: s.state = "lost"
@@ -181,7 +202,58 @@ class Cat:
             infront = c.x > s.x if nx > s.x else c.x < s.x
             if infront and abs(c.x - nx) <= 4: return True
         return False
+    # ---- curved paths ----
+    def attach(s, i, t):
+        s.rail, s.theta = i, t
+        s.rsign = -s.dir * (1 if math.sin(t) >= 0 else -1)
+        s.state = "rail"; s.fd = 0
+        s.plane = 1 if math.sin(t) > 0 else 2
+    def try_land_rail(s):
+        if s.grace > 0: return False
+        for i, p in enumerate(s.lv.paths):
+            u = (s.x - p["cx"]) / p["a"]
+            if u < -1 or u > 1: continue
+            h = p["b"] * math.sqrt(1 - u * u)
+            for sg in (1, -1):
+                yv = p["cy"] + sg * h
+                if not (s.y >= yv and s.y - 1 < yv): continue
+                t = math.atan2(sg * h / p["b"], u)
+                if not p["closed"] and (t < p["d0"] or t > p["d1"]): continue
+                s.y = int(math.floor(yv + 0.5))
+                if s.fd > 60 and not s.chute: s.state = "splat"; return True
+                s.attach(i, t); return True
+        return False
+    def try_attach(s):
+        if s.grace > 0: s.grace -= 1; return
+        for i, p in enumerate(s.lv.paths):
+            t = math.atan2((s.y - p["cy"]) / p["b"], (s.x - p["cx"]) / p["a"])
+            if not p["closed"] and (t < p["d0"] or t > p["d1"]): continue
+            qx, qy = p["cx"] + p["a"] * math.cos(t), p["cy"] + p["b"] * math.sin(t)
+            if (qx - s.x) ** 2 + (qy - s.y) ** 2 > 2.25: continue
+            s.attach(i, t); return
+    def rail_tick(s):
+        if s.rail < 0 or s.rail >= len(s.lv.paths): s.state = "walk"; return
+        p = s.lv.paths[s.rail]
+        sp = math.sqrt(p["a"] ** 2 * math.sin(s.theta) ** 2 + p["b"] ** 2 * math.cos(s.theta) ** 2)
+        nt = s.theta + s.rsign / max(0.5, sp)
+        if not p["closed"] and (nt < p["d0"] or nt > p["d1"]): s.rsign = -s.rsign; return
+        nx, ny = int(math.floor(p["cx"] + p["a"] * math.cos(nt) + 0.5)), int(math.floor(p["cy"] + p["b"] * math.sin(nt) + 0.5))
+        blocked = any(c is not s and c.state == "block" and abs(c.x - nx) <= 4 and abs(c.y - ny) <= 8 for c in s.g.cats)
+        for (x0, y0, x1, y1, nm, side) in s.lv.railblocks:
+            if nm and nm != p["name"]: continue
+            if side == "back" and math.sin(nt) <= 0: continue
+            if side == "front" and math.sin(nt) > 0: continue
+            ax0, ax1, ay0, ay1 = max(nx - 4, x0), min(nx + 5, x1), max(ny + 2, y0), min(ny + 10, y1)
+            if ax1 > ax0 and ay1 > ay0 and s.lv.count_solid(ax0, ay0, ax1, ay1) >= 3: blocked = True
+        if blocked: s.rsign = -s.rsign; return
+        if nx != s.x: s.dir = 1 if nx > s.x else -1
+        s.theta = nt % (2 * math.pi) if p["closed"] else nt
+        s.plane = 1 if math.sin(s.theta) > 0 else 2
+        s.x, s.y = nx, ny
     def walk(s):
+        s.walk_step()
+        if s.state == "walk": s.try_attach()
+    def walk_step(s):
         lv = s.lv; nx = s.x + s.dir
         if s.blocked(nx): s.dir = -s.dir; return
         if lv.is_solid(nx, s.y):
@@ -189,7 +261,7 @@ class Cat:
             lim = s.step_limit()
             while h <= lim and lv.is_solid(nx, s.y + h): h += 1
             if h > lim:
-                if s.hasclimb and lv.ax0 <= nx < lv.ax1: s.state = "climb"; s.t = 0
+                if s.hasclimb and lv.ax0 <= nx < lv.ax1 and not lv.is_hard(nx, s.y + 1): s.state = "climb"; s.t = 0; s.cstart = s.y
                 else: s.dir = -s.dir
                 return
             s.x = nx; s.y += h; return
@@ -207,6 +279,7 @@ class Cat:
                     s.state = "walk"
                     if s.plane == 1 and s.y <= s.lv.front_y: s.plane = 2
                 return
+            if s.try_land_rail(): return
             s.y -= 1; s.fd += 1
     def dig(s):
         s.t += 1
@@ -230,8 +303,11 @@ class Cat:
         if nx < lv.ax0 or nx >= lv.ax1 or s.blocked(nx): s.dir = -s.dir; s.state = "walk"; return
         if not s.solid_ahead(12, 0, 11): s.state = "walk"; return
         a, b = s.x + s.dir, s.x + s.dir * 5
-        if lv.has_hard(min(a, b), s.y, max(a, b) + 1, s.y + 4): s.state = "walk"; return
+        if lv.has_hard(min(a, b), s.y + 2, max(a, b) + 1, s.y + 6): s.state = "walk"; return
         lv.carve_rect(min(a, b), s.y, max(a, b) + 1, s.y + 11); s.x = nx
+        rise = 0
+        while rise <= 9 and lv.is_solid(s.x, s.y + rise): rise += 1
+        if rise <= 9: s.y += rise
         for d in range(4):
             if lv.is_solid(s.x, s.y - 1 - d): s.y -= d; return
         s.state = "fall"; s.fd = 0
@@ -240,6 +316,7 @@ class Cat:
         if s.t < 2: return
         s.t = 0; lv = s.lv
         if lv.is_solid(s.x, s.y + 10) or s.y + 10 >= lv.H: s.dir = -s.dir; s.state = "fall"; s.fd = 0; return
+        if s.y - s.cstart >= 100 or lv.is_hard(s.x + s.dir, s.y + 1): s.dir = -s.dir; s.state = "fall"; s.fd = 0; return
         s.y += 1
         if not lv.is_solid(s.x + s.dir, s.y): s.x += s.dir; s.state = "walk"
     def scratch(s):
@@ -351,7 +428,27 @@ if __name__ == "__main__":
         c.tick()
         if c.state == "fall": fell = True
     print(("OK   " if not fell else "FAIL ") + "L01     bottom step has no gap under the stool leg"); allok &= not fell
-    allok &= check(2, "Fluffchute every cat", [(lambda g, c: c.state in ("walk", "fall") and not c.chute, "Fluffchute")] * 10)
+    # ---- Level 2 sandbox: rim loops, blockers and the ways off the rim ----
+    import math as _m
+    g2 = Game(2, []); g2.max_ticks = 30 * 120; r2 = g2.run()[0]
+    print(("OK   " if r2.get("rail", 0) == 10 else "FAIL ") + f"L02     no traits: every kitten ends up looping the rim {r2}"); allok &= r2.get("rail", 0) == 10
+    plan = [(lambda g, c: c.state == "rail" and _m.sin(c.theta) > 0.2 and 471 <= c.x <= 477 and c.dir == -1, "Zoomies")]
+    def reach(plan_, label):
+        g_ = Game(2, plan_); g_.max_ticks = 30 * 200; vis = set(); o = Cat.tick
+        def t_(c_):
+            o(c_)
+            if c_.state == "rail" and _m.sin(c_.theta) > 0.3: vis.add(c_.x)
+        Cat.tick = t_; g_.run(); Cat.tick = o
+        return any(380 <= x <= 430 for x in vis)
+    base = reach([], "none"); after = reach(plan, "zoomies")
+    ok = (not base) and after
+    print(("OK   " if ok else "FAIL ") + f"L02     back edge between taps and vase: unreachable without Zoomies ({not base}), reachable after Zoomies through the vase ({after})"); allok &= ok
+    g2 = Game(2, [
+        (lambda g, c: c.state == "rail" and _m.sin(c.theta) < -0.5 and c.dir == 1 and 455 <= c.x <= 470, "HairballBridge"),
+        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge"),
+        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")])
+    r2 = g2.run()[0]; ok = r2.get("saved", 0) >= 1
+    print(("OK   " if ok else "FAIL ") + f"L02     a Hairball Bridge off the rim end gets a kitten onto the vanity counter {r2}"); allok &= ok
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])
     allok &= check(5, "Climber for every cat", [(lambda g, c: not c.hasclimb and c.state in ("walk", "fall"), "CurtainClimber")] * 10)

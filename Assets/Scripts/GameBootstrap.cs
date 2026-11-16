@@ -1063,6 +1063,35 @@ namespace Cattas
             Sfx.Play("pop", 0.7f);
         }
 
+        // ---------- Curved paths (rims, arcs): lookups for the kittens ----------
+        public System.Collections.Generic.IReadOnlyList<RailPath> Paths => level != null ? level.paths : null;
+
+        // Is a Biscuit Baker standing at this spot? (for kittens following a path)
+        public bool IsBlockedAt(Cat walker, int x, int y)
+        {
+            foreach (var cat in cats)
+                if (cat != walker && cat.State == CatState.Blocking && Mathf.Abs(cat.X - x) <= 4 && Mathf.Abs(cat.Y - y) <= 8) return true;
+            return false;
+        }
+
+        // Is something that sits on this path (faucet, vase...) in the way of a kitten standing at (x, y)?
+        // Only solid pixels inside the kitten's own body space count, so a tunnel smashed through a vase lets kittens pass.
+        public bool RailBlocked(RailPath path, int x, int y, float theta)
+        {
+            if (level == null || ground == null) return false;
+            int bx0 = x - 4, bx1 = x + 5, by0 = y + 2, by1 = y + Cat.CatHeight;      // the kitten's body: 9 wide
+            foreach (var blk in level.railBlocks)
+            {
+                if (blk.path.Length > 0 && blk.path != path.name) continue;
+                if (blk.side == 1 && Mathf.Sin(theta) <= 0f) continue;      // sits on the back edge: kittens on the front edge pass in front of it
+                if (blk.side == -1 && Mathf.Sin(theta) > 0f) continue;
+                int x0 = Mathf.Max(bx0, blk.rect.xMin), x1 = Mathf.Min(bx1, blk.rect.xMax);
+                int y0 = Mathf.Max(by0, blk.rect.yMin), y1 = Mathf.Min(by1, blk.rect.yMax);
+                if (x1 > x0 && y1 > y0 && ground.CountSolid(new RectInt(x0, y0, x1 - x0, y1 - y0)) >= 3) return true;
+            }
+            return false;
+        }
+
         public bool IsAtExit(int x, int y)
         {
             foreach (var zone in exitZones)

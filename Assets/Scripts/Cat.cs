@@ -2,12 +2,13 @@ using UnityEngine;
 
 namespace Cattas
 {
-    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Building, Scratching, Splatted, Saved, Lost, Zapped }
+    public enum CatState { Falling, Walking, Digging, Blocking, Zooming, Climbing, Building, Scratching, Rail, Splatted, Saved, Lost, Zapped }
 
     // One cat. Every game step it walks, climbs small bumps, turns at walls,
     // and falls off edges. Falling too far = splat.
     public class Cat : MonoBehaviour
     {
+        public const int MaxClimbHeight = 100; // Curtain Climber: this far up a wall, then it lets go (tune as we test)
         public const int MaxStepUp = 9;       // can walk up bumps this tall (a small mound, not a wall)
         public const int BridgeStepBonus = 4; // ...and a little more when standing on a hairball bridge, so the top is easy to reach
         public const int MaxStepDown = 3;     // can walk down bumps this tall without "falling"
@@ -45,7 +46,7 @@ namespace Cattas
         bool hasFluffchute; // permanent once given
         int zoomTimer;
         bool hasClimber;    // permanent once given
-        int climbTimer;
+        int climbTimer, climbStartY;
         int hairballsLeft, hackTimer, bridgeStepsLeft, bridgePause;
         public const int BridgePauseTicks = GameBootstrap.TicksPerSecond;   // one more second to click again
         public bool BridgeWaiting => State == CatState.Building && bridgeStepsLeft == 0 && hairballsLeft <= 0;
@@ -146,6 +147,7 @@ namespace Cattas
             else if (State == CatState.Climbing) Climb();
             else if (State == CatState.Building) BuildBridge();
             else if (State == CatState.Scratching) Scratch();
+            else if (State == CatState.Rail) RailTick();
 
             if (IsActive)
             {
@@ -172,12 +174,20 @@ namespace Cattas
         public bool IsActive => State == CatState.Walking || State == CatState.Falling
                       || State == CatState.Digging || State == CatState.Blocking
                       || State == CatState.Zooming || State == CatState.Climbing
-                      || State == CatState.Building || State == CatState.Scratching;
+                      || State == CatState.Building || State == CatState.Scratching || State == CatState.Rail;
 
         // Called when the player clicks this cat with a trait selected.
         // Returns true if the cat accepted it (so the trait gets used up).
         public bool TryGiveTrait(CatTrait trait)
         {
+            // A kitten running round a rim steps off the path to use most traits (permanent ones and the cable stay on)
+            if (State == CatState.Rail && trait != CatTrait.Fluffchute && trait != CatTrait.CurtainClimber && trait != CatTrait.CableChewer)
+            {
+                State = CatState.Walking;
+                railIndex = -1;
+                railGrace = 90;                  // don't hop straight back on
+                SnapToSupport();
+            }
             switch (trait)
             {
                 case CatTrait.LitterLord:
@@ -188,7 +198,7 @@ namespace Cattas
                 case CatTrait.Fluffchute:
                     // Can be given while walking, falling or digging - and it lasts forever.
                     if (hasFluffchute) return false;
-                    if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging) return false;
+                    if (State != CatState.Walking && State != CatState.Falling && State != CatState.Digging && State != CatState.Rail) return false;
                     hasFluffchute = true;
                     return true;
                 case CatTrait.Scratcher:
@@ -306,7 +316,7 @@ namespace Cattas
             // SMASH the bit right in front of us, then move forward.
             int a = x + dir, b = x + dir * ZoomReach;
             // Stone or metal in the way of our legs: bonk, zoomies over. (Stone overhead doesn't stop us.)
-            if (ground.HasHardIn(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + 4))
+            if (ground.HasHardIn(Mathf.Min(a, b), y + 2, Mathf.Max(a, b) + 1, y + 6))   // a 1-2px lip doesn't stop a charging kitten
             {
                 State = CatState.Walking;
                 return;
@@ -314,6 +324,10 @@ namespace Cattas
             game.Fx(FxKind.Smash, x + dir * 3, y + 4);
             ground.CarveRect(Mathf.Min(a, b), y, Mathf.Max(a, b) + 1, y + ZoomTunnelHeight);
             x = nextX;
+            // ride up small rises (like a curved rim) the way a walking kitten does
+            int rise = 0;
+            while (rise <= MaxStepUp && ground.IsSolid(x, y + rise)) rise++;
+            if (rise <= MaxStepUp) y += rise;
             wiggle = !wiggle;
 
             // Keep our feet on the ground (small dips are fine, big drops mean falling)
@@ -336,6 +350,14 @@ namespace Cattas
             if (ground.IsSolid(x, y + CatHeight) || y + CatHeight >= ground.Height)
             {
                 // Bonk! Ceiling. Let go and fall.
+                dir = -dir;
+                State = CatState.Falling;
+                fallDistance = 0;
+                return;
+            }
+            // Out of puff, or the wall turned slippery (stone, porcelain, brass): let go and fall
+            if (y - climbStartY >= MaxClimbHeight || ground.IsHard(wallX, y + 1))
+            {
                 dir = -dir;
                 State = CatState.Falling;
                 fallDistance = 0;
@@ -496,10 +518,108 @@ namespace Cattas
             return false;
         }
 
+        // ---------- Curved paths: running round a rim ----------
+        int railIndex = -1, railSign = 1, railGrace;
+        float railTheta, railDepth;
+        bool onRailLook;
+
+        // Stepping off a curve: settle the feet exactly onto whatever solid surface is under them (within 3 px)
+        void SnapToSupport()
+        {
+            int up = 0;
+            while (up < 3 && ground.IsSolid(x, y + up)) up++;
+            y += up;
+            for (int d = 0; d <= 3; d++)
+                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
+        }
+
+        void AttachRail(int index, float theta)
+        {
+            railIndex = index;
+            railTheta = theta;
+            // choose the way round that matches the way the kitten is facing (dx/dtheta = -a sin(theta))
+            railSign = -dir * (Mathf.Sin(theta) >= 0f ? 1 : -1);
+            State = CatState.Rail;
+            fallDistance = 0;
+            puffed = false;
+            plane = Mathf.Sin(theta) > 0f ? DiggableGround.Back : DiggableGround.Front;
+        }
+
+        // Falling onto a rim: did this step cross one of the curves? (the first one met from above is the back edge)
+        bool TryLandOnRail()
+        {
+            var paths = game.Paths;
+            if (paths == null || railGrace > 0) return false;
+            for (int i = 0; i < paths.Count; i++)
+            {
+                var p = paths[i];
+                float u = (x - p.cx) / p.a;
+                if (u < -1f || u > 1f) continue;
+                float h = p.b * Mathf.Sqrt(1f - u * u);
+                for (int sgn = 1; sgn >= -1; sgn -= 2)
+                {
+                    float yv = p.cy + sgn * h;
+                    if (!(y >= yv && y - 1 < yv)) continue;
+                    float t = Mathf.Atan2(sgn * h / p.b, u);
+                    if (!p.closed && (t < p.deg0 * Mathf.Deg2Rad || t > p.deg1 * Mathf.Deg2Rad)) continue;
+                    y = Mathf.RoundToInt(yv);
+                    if (fallDistance > SafeFallHeight && !hasFluffchute) { Splat(); return true; }
+                    AttachRail(i, t);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Walking onto a curve from ordinary ground (e.g. the top of a bridge meeting a rim)
+        void TryAttachRail()
+        {
+            if (railGrace > 0) { railGrace--; return; }
+            var paths = game.Paths;
+            if (paths == null) return;
+            for (int i = 0; i < paths.Count; i++)
+            {
+                var p = paths[i];
+                float t = Mathf.Atan2((y - p.cy) / p.b, (x - p.cx) / p.a);
+                if (!p.closed && (t < p.deg0 * Mathf.Deg2Rad || t > p.deg1 * Mathf.Deg2Rad)) continue;
+                var q = p.Point(t);
+                if ((q - new Vector2(x, y)).sqrMagnitude > 2.25f) continue;      // within 1.5 pixels of the curve
+                AttachRail(i, t);
+                return;
+            }
+        }
+
+        // One step along the curve: 1 pixel of arc length. A faucet/vase/baker in the way turns the kitten round.
+        void RailTick()
+        {
+            var paths = game.Paths;
+            if (paths == null || railIndex < 0 || railIndex >= paths.Count) { State = CatState.Walking; return; }
+            var path = paths[railIndex];
+            float nt = railTheta + railSign / Mathf.Max(0.5f, path.Speed(railTheta));
+            if (!path.closed)
+            {
+                if (nt < path.deg0 * Mathf.Deg2Rad || nt > path.deg1 * Mathf.Deg2Rad) { railSign = -railSign; return; }
+            }
+            var p = path.Point(nt);
+            int nx = Mathf.RoundToInt(p.x), ny = Mathf.RoundToInt(p.y);
+            if (game.IsBlockedAt(this, nx, ny) || game.RailBlocked(path, nx, ny, nt)) { railSign = -railSign; return; }
+            if (nx != x) dir = nx > x ? 1 : -1;
+            railTheta = path.closed ? Mathf.Repeat(nt, 2f * Mathf.PI) : nt;
+            plane = Mathf.Sin(railTheta) > 0f ? DiggableGround.Back : DiggableGround.Front;     // the back edge sees the faucet and vase, the front edge doesn't
+            x = nx;
+            y = ny;
+        }
+
         // How tall an edge this kitten can step up onto right now
         int StepLimit => MaxStepUp + (ground.IsBuilt(x, y - 1) || ground.IsBuilt(x, y - 2) ? BridgeStepBonus : 0);
 
         void Walk()
+        {
+            WalkStep();
+            if (State == CatState.Walking) TryAttachRail();
+        }
+
+        void WalkStep()
         {
             int nextX = x + dir;
 
@@ -515,10 +635,11 @@ namespace Cattas
                 if (h > limit)
                 {
                     // It's a wall! Climbers climb it (but not the edge of the level); everyone else turns round.
-                    if (hasClimber && nextX >= ground.MinX && nextX < ground.MaxX)
+                    if (hasClimber && nextX >= ground.MinX && nextX < ground.MaxX && !ground.IsHard(nextX, y + 1))   // claws can't grip stone, porcelain, brass...
                     {
                         State = CatState.Climbing;
                         climbTimer = 0;
+                        climbStartY = y;
                     }
                     else
                     {
@@ -554,21 +675,27 @@ namespace Cattas
             for (int i = 0; i < speed; i++)
             {
                 if (ground.IsSolid(x, y - 1)) { Land(); return; }
+                if (TryLandOnRail()) return;
                 y--;
                 fallDistance++;
             }
+        }
+
+        void Splat()
+        {
+            State = CatState.Splatted;
+            game.Fx(FxKind.Splat, x, y);
+            game.OnCatLost(this);
+            transform.localScale = new Vector3(1.4f, 0.4f, 1f); // squish!
+            SetColour(baseTint * 0.6f);
+            Destroy(gameObject, 1f);
         }
 
         void Land()
         {
             if (fallDistance > SafeFallHeight && !hasFluffchute)
             {
-                State = CatState.Splatted;
-                game.Fx(FxKind.Splat, x, y);
-                game.OnCatLost(this);
-                transform.localScale = new Vector3(1.4f, 0.4f, 1f); // squish!
-                SetColour(baseTint * 0.6f);
-                Destroy(gameObject, 1f);
+                Splat();
             }
             else
             {
@@ -627,6 +754,15 @@ namespace Cattas
                 // All fluffed up like a dandelion, drifting down
                 transform.localScale = new Vector3(1.4f, 1.4f, 1f);
             }
+            else if (State == CatState.Rail)
+            {
+                // Sneaky depth trick: on the back half of a rim the kitten is a little smaller, darker and behind
+                railDepth = Mathf.Clamp01(0.5f + 0.5f * Mathf.Sin(railTheta));
+                float k = 1f - 0.06f * railDepth;
+                transform.localScale = new Vector3(k, k, 1f);
+                if (puppet != null) puppet.SetOrder(railDepth > 0.6f ? 4 : 8);
+                onRailLook = true;
+            }
             else if (State != CatState.Splatted)
             {
                 // Cats with a Fluffchute or Curtain Climber are permanently a bit fluffier, so you can spot them
@@ -636,7 +772,7 @@ namespace Cattas
             {
                 // the puppet does its own leg-swinging, so it only needs to know what we're up to
                 puppet.flip = dir < 0;
-                puppet.state = State;
+                puppet.state = State == CatState.Rail ? CatState.Walking : State;
                 puppet.floating = IsFloating;
                 puppet.hacking = State == CatState.Building && bridgeStepsLeft == 0 && hackTimer > TicksPerHairball - 8;
                 if (State == CatState.Blocking && (kneadTimer / 20) % 2 == 1) puppet.flip = !puppet.flip;
@@ -644,6 +780,14 @@ namespace Cattas
                     transform.localScale = Vector3.one; // the puppet animates these itself
             }
             else sr.flipX = flip;
+
+            if (State == CatState.Rail && fuseTicks <= 0) SetColour(Color.Lerp(baseTint, baseTint * 0.86f, railDepth));
+            else if (onRailLook)
+            {
+                onRailLook = false;
+                if (fuseTicks <= 0) SetColour(baseTint);
+                ApplyDrawOrder();
+            }
 
             // Sparks! Flicker yellow while chewing a cable
             if (fuseTicks > 0)

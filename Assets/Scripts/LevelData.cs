@@ -21,6 +21,22 @@ namespace Cattas
     //   prop   x0 y0 x1 y1 <art>              an object a kitten can knock over (secrets can hide behind it)
     //   trap   x0 y0 x1 y1 <art>              a mouse trap: SNAP! (bridge over it, or ZAP it to disarm)
     //   secret x0 y0 x1 y1 <art> <Name...>    a hidden collectible
+    // A curved walkway kittens follow (ellipse: centre cx,cy, radii a,b, all in level pixels, y up).
+    // Closed = a full loop (tub rim, toilet lid); open = an arc between two angles in degrees (0 = right end, 90 = top/back).
+    public class RailPath
+    {
+        public string name = "";
+        public float cx, cy, a = 1f, b = 1f;
+        public bool closed = true;
+        public float deg0, deg1 = 360f;
+        public Vector2 Point(float t) => new Vector2(cx + a * Mathf.Cos(t), cy + b * Mathf.Sin(t));
+        // length of path per unit of angle (so a kitten moves 1 pixel of arc per step)
+        public float Speed(float t) => Mathf.Sqrt(a * a * Mathf.Sin(t) * Mathf.Sin(t) + b * b * Mathf.Cos(t) * Mathf.Cos(t));
+    }
+
+    // A thing sitting on a path (faucet, vase...). While it is still solid, kittens on the path turn back at it.
+    public class RailBlock { public RectInt rect; public string path = ""; public int side; }   // side: 0 = any, 1 = back edge only, -1 = front edge only
+
     public class LevelObject
     {
         public string type = "";
@@ -76,6 +92,8 @@ namespace Cattas
         public bool showMarkers = true; // draw the plain hatch/exit boxes (turn off when the art has its own)
         public int parSeconds;          // optional "finish in under" target time
         public readonly List<LevelObject> objects = new List<LevelObject>();
+        public readonly List<RailPath> paths = new List<RailPath>();
+        public readonly List<RailBlock> railBlocks = new List<RailBlock>();
         public readonly int[] traits = new int[CatTraits.Count];
         public readonly List<string> rows = new List<string>();
 
@@ -168,6 +186,44 @@ namespace Cattas
                             var spot = new HatchSpot { x = hx, y = hy };
                             if (h.Length > 2 && int.TryParse(h[2], out int hd)) spot.dir = hd < 0 ? -1 : 1;
                             d.hatches.Add(spot);
+                        }
+                        break;
+                    }
+                    case "path":
+                    {
+                        // path: <name> <cx> <cy> <a> <b> closed|open [deg0 deg1]
+                        var q = val.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (q.Length >= 6)
+                        {
+                            var rp = new RailPath { name = q[0] };
+                            float.TryParse(q[1], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.cx);
+                            float.TryParse(q[2], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.cy);
+                            float.TryParse(q[3], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.a);
+                            float.TryParse(q[4], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.b);
+                            rp.closed = q[5].ToLowerInvariant() != "open";
+                            if (!rp.closed && q.Length >= 8)
+                            {
+                                float.TryParse(q[6], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.deg0);
+                                float.TryParse(q[7], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.deg1);
+                            }
+                            d.paths.Add(rp);
+                        }
+                        break;
+                    }
+                    case "railblock":
+                    {
+                        // railblock: <x0> <y0> <x1> <y1> [path name] [back|front]
+                        var q = val.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (q.Length >= 4)
+                        {
+                            var r = ParseRect(string.Join(" ", q[0], q[1], q[2], q[3]));
+                            if (r.width > 0 && r.height > 0)
+                                d.railBlocks.Add(new RailBlock
+                                {
+                                    rect = r,
+                                    path = q.Length > 4 ? q[4] : "",
+                                    side = q.Length > 5 ? (q[5].ToLowerInvariant() == "back" ? 1 : q[5].ToLowerInvariant() == "front" ? -1 : 0) : 0
+                                });
                         }
                         break;
                     }
