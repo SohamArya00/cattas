@@ -16,7 +16,12 @@ namespace Cattas
     // see-through layer that only shows effects on top of the picture (holes you dug, hairballs).
     public class DiggableGround : MonoBehaviour
     {
-        public const int Back = 1, Front = 2, Both = 3;
+        // Depth layers (lanes). A pixel belongs to one or more; a kitten is blocked only by pixels in its own lane.
+        // Back = things against the wall, Front = floor-level things, Mid = things in the middle of the room.
+        public const int Back = 1, Front = 2, Mid = 4, Both = 7;
+
+        // When on, a kitten can STAND on a surface from any lane (landing/stepping onto it moves it to that lane)
+        public bool AnySupport;
 
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -61,6 +66,7 @@ namespace Cattas
         bool[] dug;                  // pixels dug out of the picture
         bool[] deco;                 // pixels drawn only as decoration (the shaft below a hole, crumbs at its lip)
         bool[] built;                // pixels that are hairball bridge
+        byte[] builtLane;            // the lane of the kitten that built each hairball
 
         public void Init(int width, int height, int artScale = 1)
         {
@@ -75,6 +81,7 @@ namespace Cattas
             dug = new bool[width * height];
             deco = new bool[width * height];
             built = new bool[width * height];
+            builtLane = new byte[width * height];
 
             texture = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
             {
@@ -104,6 +111,22 @@ namespace Cattas
         }
 
         bool Solid(int i) => planes[i] != 0;
+
+        // Something to stand on at this pixel? With AnySupport on, solid pixels of every lane count.
+        public bool IsSupport(int x, int y)
+        {
+            if (!AnySupport) return IsSolid(x, y);
+            if (x < MinX || x >= MaxX) return true;
+            if (y < MinY || y >= MaxY) return false;
+            return planes[y * Width + x] != 0;
+        }
+
+        // Which lanes the solid pixel at (x, y) belongs to (0 = nothing there)
+        public int MaskAt(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return 0;
+            return planes[y * Width + x];
+        }
 
         public bool IsHard(int x, int y)
         {
@@ -153,7 +176,7 @@ namespace Cattas
                     int sx = Mathf.Min(aw - 1, (int)((x + 0.5f) * aw / Width));
                     var c = src[sy * aw + sx];
                     if (c.a <= 127) continue;
-                    int m = (c.r > 127 ? Back : 0) | (c.g > 127 ? Front : 0);
+                    int m = (c.r > 127 ? Back : 0) | (c.g > 127 ? Front : 0) | (c.b > 127 ? Mid : 0);   // red = back, green = front, blue = mid
                     planes[y * Width + x] = (byte)(m == 0 ? Both : m);
                 }
             }
@@ -300,9 +323,10 @@ namespace Cattas
                     int i = y * Width + x;
                     if ((planes[i] & ActivePlane) != 0) continue;   // already solid for this kitten: no hairballs inside solid things
                     int n = Noise(x, y) / 2;
-                    planes[i] |= (byte)ActivePlane;
+                    planes[i] = Both;                 // a bridge is solid for every lane (everyone can climb the stairs)
                     dug[i] = false;
                     built[i] = true;
+                    builtLane[i] = (byte)ActivePlane;
                     SetBlock(x, y, new Color32((byte)Mathf.Min(255, colour.r + n), (byte)Mathf.Min(255, colour.g + n),
                                                (byte)Mathf.Min(255, colour.b + n), 255));
                     needsRedraw = true;
@@ -329,6 +353,14 @@ namespace Cattas
             return built[i] && (planes[i] & ActivePlane) != 0;
         }
 
+        // A bridge pixel built by a kitten in my lane (kittens running a rim step onto stairs that start on their path)
+        public bool IsBuiltInMyLane(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return false;
+            int i = y * Width + x;
+            return built[i] && (builtLane[i] & ActivePlane) != 0;
+        }
+
         // Remove ground in a rectangle (x1/y1 not included). Stone is left alone.
         public void CarveRect(int x0, int y0, int x1, int y1)
         {
@@ -353,7 +385,7 @@ namespace Cattas
             if (x < 0 || x >= Width || y < 0 || y >= Height) return;
             int i = y * Width + x;
             if ((planes[i] & ActivePlane) == 0 || hard[i]) return;
-            planes[i] = (byte)(planes[i] & ~ActivePlane);
+            planes[i] = built[i] ? (byte)0 : (byte)(planes[i] & ~ActivePlane);   // a bridge is smashed for every lane
             built[i] = false;
             if (planes[i] != 0) return;           // still solid in the other plane: the picture stays as it is
             if (overlayOnly) dug[i] = true;       // drawn by RefreshHoles

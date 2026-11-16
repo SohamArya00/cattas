@@ -26,7 +26,7 @@ namespace Cattas
         Sprite[] catFrames;          // painted kitten animation (if the art exists)
         public CatRig KittenRig { get; private set; }
         // Depth planes: kittens start in the back plane when the level has a front floor, otherwise in both
-        public int StartPlane => level != null && level.frontPlaneY > 0 ? DiggableGround.Back : DiggableGround.Both;
+        public int StartPlane => level == null ? DiggableGround.Both : level.startLane != 0 ? level.startLane : level.frontPlaneY > 0 ? DiggableGround.Back : DiggableGround.Both;
         public int FrontPlaneY => level != null ? level.frontPlaneY : 0;   // paper-doll kitten (preferred when available)
         Sprite particleSprite, flashSprite;
         Texture2D menuBackdrop;
@@ -283,6 +283,7 @@ namespace Cattas
             groundObj.transform.SetParent(levelRoot, false);
             ground = groundObj.AddComponent<DiggableGround>();
             ground.Init(levelWidth, levelHeight, artScale);
+            ground.AnySupport = level.laneJump;
             if (collisionArt != null)
             {
                 ground.ApplyCollision(collisionArt);

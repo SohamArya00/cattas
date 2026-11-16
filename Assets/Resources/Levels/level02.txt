@@ -6,12 +6,14 @@ hint: Kittens run round the tub rim. The taps and the vase block the back edge. 
 size: 836 471
 background: bathroom2_bg
 collision: bathroom2_collision
+lanejump: on
+startlane: m
 stone: bathroom2_stone
-path: tub 386.40 208.75 103.50 5.25 closed
+path: tub 386.40 208.75 103.50 5.25 closed M B
 railblock: 338 214 373 252 tub back
 railblock: 441 215 468 252 tub back
-hatch: 300 250 1
-goal: 541 192 770 270
+hatch: 484 250 1
+goal: 541 192 770 215
 cats: 10
 need: 3
 rate: 2

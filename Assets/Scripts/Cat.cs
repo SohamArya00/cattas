@@ -122,10 +122,21 @@ namespace Cattas
             ground.ActivePlane = DiggableGround.Both;
         }
 
-        // Draw order: back-plane kittens (5) are hidden by things like the stool (6); Mum (7); front-plane kittens (8)
+        // Standing on something that is only in another lane moves the kitten into that lane
+        // (only in levels with 'lanejump: on'). Priority when a surface belongs to several: Mid, Front, Back.
+        void AdoptLane(int sx, int sy)
+        {
+            if (!ground.AnySupport) return;
+            int m = ground.MaskAt(sx, sy);
+            if (m == 0 || (m & plane) != 0) return;
+            plane = (m & DiggableGround.Mid) != 0 ? DiggableGround.Mid : (m & DiggableGround.Front) != 0 ? DiggableGround.Front : DiggableGround.Back;
+            ApplyDrawOrder();
+        }
+
+        // Draw order: back-lane kittens (4) are hidden by things like the stool (6); mid (5); Mum (7); front-lane kittens (8)
         void ApplyDrawOrder()
         {
-            int order = plane == DiggableGround.Front ? 8 : 5;
+            int order = plane == DiggableGround.Front ? 8 : plane == DiggableGround.Back && ground.AnySupport ? 4 : 5;
             if (puppet != null) puppet.SetOrder(order);
             else if (sr != null) sr.sortingOrder = order;
         }
@@ -283,7 +294,7 @@ namespace Cattas
         void Knead()
         {
             kneadTimer++;
-            if (!ground.IsSolid(x, y - 1))
+            if (!ground.IsSupport(x, y - 1))
             {
                 State = CatState.Falling;
                 fallDistance = 0;
@@ -333,7 +344,7 @@ namespace Cattas
             // Keep our feet on the ground (small dips are fine, big drops mean falling)
             for (int d = 0; d <= MaxStepDown; d++)
             {
-                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
+                if (ground.IsSupport(x, y - 1 - d)) { y -= d; AdoptLane(x, y - 1); return; }
             }
             State = CatState.Falling;
             fallDistance = 0;
@@ -420,7 +431,7 @@ namespace Cattas
             y--;
             wiggle = !wiggle;
 
-            if (!ground.IsSolid(x, y - 1))
+            if (!ground.IsSupport(x, y - 1))
             {
                 State = CatState.Falling;
                 fallDistance = 0;
@@ -453,7 +464,7 @@ namespace Cattas
         // Hairball Bridge: hack up a hairball (one a second), step up onto it, repeat 12 times.
         void BuildBridge()
         {
-            if (!ground.IsSolid(x, y - 1))
+            if (!ground.IsSupport(x, y - 1))
             {
                 State = CatState.Falling;
                 fallDistance = 0;
@@ -530,7 +541,7 @@ namespace Cattas
             while (up < 3 && ground.IsSolid(x, y + up)) up++;
             y += up;
             for (int d = 0; d <= 3; d++)
-                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
+                if (ground.IsSupport(x, y - 1 - d)) { y -= d; AdoptLane(x, y - 1); return; }
         }
 
         void AttachRail(int index, float theta)
@@ -542,7 +553,16 @@ namespace Cattas
             State = CatState.Rail;
             fallDistance = 0;
             puffed = false;
-            plane = Mathf.Sin(theta) > 0f ? DiggableGround.Back : DiggableGround.Front;
+            plane = LaneOnPath(game.Paths[index], Mathf.Sin(theta) > 0f);
+            ApplyDrawOrder();
+        }
+
+        // The depth lane for the front/back half of a path (levels without lane info keep the old back/front meaning)
+        int LaneOnPath(RailPath path, bool backHalf)
+        {
+            int lane = backHalf ? path.backLane : path.frontLane;
+            if (lane != 0) return lane;
+            return backHalf ? DiggableGround.Back : DiggableGround.Front;
         }
 
         // Falling onto a rim: did this step cross one of the curves? (the first one met from above is the back edge)
@@ -595,6 +615,18 @@ namespace Cattas
             var paths = game.Paths;
             if (paths == null || railIndex < 0 || railIndex >= paths.Count) { State = CatState.Walking; return; }
             var path = paths[railIndex];
+
+            // Stairs (hairball bridge) built right next to the path: step off the path and climb them
+            for (int h = 0; h <= 3; h++)
+                if (ground.IsBuiltInMyLane(x + dir, y + h))
+                {
+                    State = CatState.Walking;
+                    railIndex = -1;
+                    railGrace = 60;
+                    SnapToSupport();
+                    return;
+                }
+
             float nt = railTheta + railSign / Mathf.Max(0.5f, path.Speed(railTheta));
             if (!path.closed)
             {
@@ -605,7 +637,7 @@ namespace Cattas
             if (game.IsBlockedAt(this, nx, ny) || game.RailBlocked(path, nx, ny, nt)) { railSign = -railSign; return; }
             if (nx != x) dir = nx > x ? 1 : -1;
             railTheta = path.closed ? Mathf.Repeat(nt, 2f * Mathf.PI) : nt;
-            plane = Mathf.Sin(railTheta) > 0f ? DiggableGround.Back : DiggableGround.Front;     // the back edge sees the faucet and vase, the front edge doesn't
+            plane = LaneOnPath(path, Mathf.Sin(railTheta) > 0f);     // the back edge sees the faucet and vase, the front edge doesn't
             x = nx;
             y = ny;
         }
@@ -656,7 +688,7 @@ namespace Cattas
             // Is there ground just below us?
             for (int d = 0; d <= MaxStepDown; d++)
             {
-                if (ground.IsSolid(x, y - 1 - d)) { y -= d; return; }
+                if (ground.IsSupport(x, y - 1 - d)) { y -= d; AdoptLane(x, y - 1); return; }
             }
             State = CatState.Falling;
             fallDistance = 0;
@@ -674,7 +706,7 @@ namespace Cattas
             int speed = IsFloating ? FloatSpeed : FallSpeed;
             for (int i = 0; i < speed; i++)
             {
-                if (ground.IsSolid(x, y - 1)) { Land(); return; }
+                if (ground.IsSupport(x, y - 1)) { Land(); return; }
                 if (TryLandOnRail()) return;
                 y--;
                 fallDistance++;
@@ -701,6 +733,7 @@ namespace Cattas
             {
                 State = CatState.Walking;
                 puffed = false;
+                AdoptLane(x, y - 1);
                 // landed on the front floor: from now on this kitten lives in front of the steps
                 if (plane == DiggableGround.Back && y <= game.FrontPlaneY) { plane = DiggableGround.Front; ApplyDrawOrder(); }
             }

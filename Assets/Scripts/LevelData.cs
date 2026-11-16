@@ -29,6 +29,7 @@ namespace Cattas
         public float cx, cy, a = 1f, b = 1f;
         public bool closed = true;
         public float deg0, deg1 = 360f;
+        public int frontLane, backLane;       // depth lanes (bits) of the front half and the back half (0 = leave the kitten's lane alone)
         public Vector2 Point(float t) => new Vector2(cx + a * Mathf.Cos(t), cy + b * Mathf.Sin(t));
         // length of path per unit of angle (so a kitten moves 1 pixel of arc per step)
         public float Speed(float t) => Mathf.Sqrt(a * a * Mathf.Sin(t) * Mathf.Sin(t) + b * b * Mathf.Cos(t) * Mathf.Cos(t));
@@ -74,6 +75,9 @@ namespace Cattas
         public string occlusion = "";
         // Kittens that land at or below this height join the front plane (0 = no depth planes)
         public int frontPlaneY;
+        // "lanejump: on": kittens can stand on surfaces from any depth lane (and move to that lane). "startlane: m|b|f".
+        public bool laneJump;
+        public int startLane;
         // The part of the picture the camera may show (e.g. to leave out a strip). Empty = the whole picture.
         public RectInt view;
         public bool HasView => view.width > 0 && view.height > 0;
@@ -175,6 +179,8 @@ namespace Cattas
                     case "stone": d.stone = val; break;
                     case "collision": d.collision = val; break;
                     case "occlusion": d.occlusion = val; break;
+                    case "lanejump": d.laneJump = val.ToLowerInvariant() == "on" || val.ToLowerInvariant() == "yes"; break;
+                    case "startlane": d.startLane = LaneBit(val); break;
                     case "frontplane": int.TryParse(val, out d.frontPlaneY); break;
                     case "view": d.view = ParseRect(val); break;
                     case "goal": d.goal = ParseRect(val); break;
@@ -201,11 +207,14 @@ namespace Cattas
                             float.TryParse(q[3], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.a);
                             float.TryParse(q[4], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.b);
                             rp.closed = q[5].ToLowerInvariant() != "open";
+                            int next = 6;
                             if (!rp.closed && q.Length >= 8)
                             {
                                 float.TryParse(q[6], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.deg0);
                                 float.TryParse(q[7], NumberStyles.Float, CultureInfo.InvariantCulture, out rp.deg1);
+                                next = 8;
                             }
+                            if (q.Length > next + 1) { rp.frontLane = LaneBit(q[next]); rp.backLane = LaneBit(q[next + 1]); }
                             d.paths.Add(rp);
                         }
                         break;
@@ -263,6 +272,17 @@ namespace Cattas
             foreach (var r in d.rows) cols = Mathf.Max(cols, r.Length);
             d.Cols = cols;
             return d;
+        }
+
+        public static int LaneBit(string s)
+        {
+            switch (s.ToLowerInvariant())
+            {
+                case "b": case "back": return 1;
+                case "f": case "front": return 2;
+                case "m": case "mid": return 4;
+                default: return 0;
+            }
         }
 
         static RectInt ParseRect(string val)

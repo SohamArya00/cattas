@@ -31,7 +31,11 @@ class Level:
                 parts = st[7:].split()
                 self.objects.append([parts[0], int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), parts[5:] , True])
         self.solid = bytearray(self.W * self.H); self.hard = bytearray(self.W * self.H)   # solid: 1 back, 2 front, 3 both
-        self.plane = 3          # the plane of the cat being simulated (set by Cat.tick)
+        self.plane = 7          # the lane of the cat being simulated (set by Cat.tick); 1 back, 2 front, 4 mid, 7 all
+        self.lanejump = self.meta.get('lanejump', '').lower() in ('on', 'yes')
+        sl = self.meta.get('startlane', '').lower()
+        self.startlane = {'b': 1, 'back': 1, 'f': 2, 'front': 2, 'm': 4, 'mid': 4}.get(sl, 0)
+        self.builtlane = bytearray(self.W * self.H)
         self.built = bytearray(self.W * self.H)   # hairball bridge pixels
         self.front_y = int(self.meta.get("frontplane", 0) or 0)
         self.hatches, self.exits = [], []
@@ -43,8 +47,11 @@ class Level:
                 p = st[6:].replace(",", " ").split(); self.hatches.append((int(p[0]), int(p[1]), int(p[2]) if len(p) > 2 else 1))
             if st.startswith("path:"):
                 q = st[5:].split()
-                self.paths.append(dict(name=q[0], cx=float(q[1]), cy=float(q[2]), a=float(q[3]), b=float(q[4]), closed=q[5].lower() != "open",
-                                       d0=math.radians(float(q[6])) if len(q) > 7 else 0.0, d1=math.radians(float(q[7])) if len(q) > 7 else 2 * math.pi))
+                closed = q[5].lower() != "open"; nxt = 6 if closed or len(q) < 8 else 8
+                lane = lambda t: {'b': 1, 'back': 1, 'f': 2, 'front': 2, 'm': 4, 'mid': 4}.get(t.lower(), 0)
+                self.paths.append(dict(name=q[0], cx=float(q[1]), cy=float(q[2]), a=float(q[3]), b=float(q[4]), closed=closed,
+                                       d0=math.radians(float(q[6])) if (not closed and len(q) > 7) else 0.0, d1=math.radians(float(q[7])) if (not closed and len(q) > 7) else 2 * math.pi,
+                                       fl=lane(q[nxt]) if len(q) > nxt + 1 else 0, bl=lane(q[nxt + 1]) if len(q) > nxt + 1 else 0))
             if st.startswith("railblock:"):
                 q = st[10:].split(); self.railblocks.append((int(q[0]), int(q[1]), int(q[2]), int(q[3]), q[4] if len(q) > 4 else "", q[5].lower() if len(q) > 5 else ""))
             if st.startswith("goal:"):
@@ -60,8 +67,8 @@ class Level:
                 for x in range(self.W):
                     r, g, b, a = px[min(img.width - 1, int((x + 0.5) * img.width / self.W)), img.height - 1 - sy]
                     if a > 127:
-                        m = (1 if r > 127 else 0) | (2 if g > 127 else 0)
-                        self.solid[y * self.W + x] = m or 3
+                        m = (1 if r > 127 else 0) | (2 if g > 127 else 0) | (4 if b > 127 else 0)
+                        self.solid[y * self.W + x] = m or 7
         art = self.meta.get("foreground", "")
         if art:
             from PIL import Image
@@ -69,7 +76,7 @@ class Level:
             k = img.width // self.W; a = img.split()[3].load()
             for y in range(self.H):
                 for x in range(self.W):
-                    if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 3
+                    if a[x * k + k // 2, img.height - 1 - (y * k + k // 2)] > 127: self.solid[y * self.W + x] = 7
         stone = self.meta.get("stone", "")
         if (art or coll) and stone:
             from PIL import Image
@@ -111,12 +118,24 @@ class Level:
     def fill(self, x0, y0, x1, y1, hard=False):
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
-                self.solid[y * self.W + x] = 3
+                self.solid[y * self.W + x] = 7
                 if hard: self.hard[y * self.W + x] = 1
     def is_solid(self, x, y):
         if x < self.ax0 or x >= self.ax1: return True
         if y < self.ay0 or y >= self.ay1: return False
         return (self.solid[y * self.W + x] & self.plane) != 0
+    def is_support(self, x, y):
+        if not self.lanejump: return self.is_solid(x, y)
+        if x < self.ax0 or x >= self.ax1: return True
+        if y < self.ay0 or y >= self.ay1: return False
+        return self.solid[y * self.W + x] != 0
+    def built_my_lane(self, x, y):
+        if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
+        i = y * self.W + x
+        return self.built[i] == 1 and (self.builtlane[i] & self.plane) != 0
+    def mask_at(self, x, y):
+        if x < 0 or x >= self.W or y < 0 or y >= self.H: return 0
+        return self.solid[y * self.W + x]
     def is_hard(self, x, y):
         if x < 0 or x >= self.W or y < 0 or y >= self.H: return False
         i = y * self.W + x
@@ -127,7 +146,7 @@ class Level:
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if (self.solid[i] & self.plane) and not self.hard[i]: self.solid[i] &= ~self.plane & 3; self.built[i] = 0
+                if (self.solid[i] & self.plane) and not self.hard[i]: self.solid[i] = 0 if self.built[i] else (self.solid[i] & ~self.plane & 7); self.built[i] = 0
     def carve_circle(self, cx, cy, r):
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
@@ -136,7 +155,7 @@ class Level:
         for y in range(max(0, y0), min(self.H, y1)):
             for x in range(max(0, x0), min(self.W, x1)):
                 i = y * self.W + x
-                if not (self.solid[i] & self.plane): self.solid[i] |= self.plane; self.built[i] = 1
+                if not (self.solid[i] & self.plane): self.solid[i] = 7; self.built[i] = 1; self.builtlane[i] = self.plane
     def count_solid(self, x0, y0, x1, y1):
         n = 0
         for y in range(max(0, y0), min(self.H, y1)):
@@ -153,11 +172,16 @@ class Level:
 class Cat:
     def __init__(s, g, lv, x, y):
         s.g, s.lv, s.x, s.y, s.dir = g, lv, x, y, 1
-        s.plane = 1 if lv.front_y > 0 else 3
+        s.plane = lv.startlane or (1 if lv.front_y > 0 else 7)
         s.state = "fall"; s.fd = 0; s.t = 0; s.chute = s.hasclimb = False
         s.fuse = -1; s.balls = 0; s.steps = 0
         s.rail = -1; s.rsign = 1; s.theta = 0.0; s.grace = 0; s.cstart = 0
     def step_limit(s): return 9 + (4 if s.lv.is_built(s.x, s.y - 1) or s.lv.is_built(s.x, s.y - 2) else 0)
+    def adopt(s, sx, sy):
+        if not s.lv.lanejump: return
+        m = s.lv.mask_at(sx, sy)
+        if m == 0 or (m & s.plane): return
+        s.plane = 4 if m & 4 else 2 if m & 2 else 1
     def active(s): return s.state in ("walk", "fall", "dig", "block", "zoom", "climb", "build", "scratch", "rail")
     def give(s, trait):
         if s.state == "rail" and trait not in ("Fluffchute", "CurtainClimber", "CableChewer"):
@@ -166,7 +190,7 @@ class Cat:
             while up < 3 and s.lv.is_solid(s.x, s.y + up): up += 1
             s.y += up
             for d in range(4):
-                if s.lv.is_solid(s.x, s.y - 1 - d): s.y -= d; break
+                if s.lv.is_support(s.x, s.y - 1 - d): s.y -= d; s.adopt(s.x, s.y - 1); break
         st = s.state
         if trait == "LitterLord" and st == "walk": s.state = "dig"; s.t = 0; return True
         if trait == "BiscuitBaker" and st == "walk": s.state = "block"; return True
@@ -181,7 +205,7 @@ class Cat:
     def tick(s):
         s.lv.plane = s.plane
         try: s.tick_inner()
-        finally: s.lv.plane = 3
+        finally: s.lv.plane = 7
     def tick_inner(s):
         lv = s.lv
         if s.active() and s.fuse > 0:
@@ -207,7 +231,10 @@ class Cat:
         s.rail, s.theta = i, t
         s.rsign = -s.dir * (1 if math.sin(t) >= 0 else -1)
         s.state = "rail"; s.fd = 0
-        s.plane = 1 if math.sin(t) > 0 else 2
+        s.plane = s.path_lane(i, math.sin(t) > 0)
+    def path_lane(s, i, back):
+        p = s.lv.paths[i]; lane = p["bl"] if back else p["fl"]
+        return lane or (1 if back else 2)
     def try_land_rail(s):
         if s.grace > 0: return False
         for i, p in enumerate(s.lv.paths):
@@ -234,6 +261,15 @@ class Cat:
     def rail_tick(s):
         if s.rail < 0 or s.rail >= len(s.lv.paths): s.state = "walk"; return
         p = s.lv.paths[s.rail]
+        for h in range(4):                      # stairs built right next to the path: step off and climb them
+            if s.lv.built_my_lane(s.x + s.dir, s.y + h):
+                s.state = "walk"; s.rail = -1; s.grace = 60
+                up = 0
+                while up < 3 and s.lv.is_solid(s.x, s.y + up): up += 1
+                s.y += up
+                for d in range(4):
+                    if s.lv.is_support(s.x, s.y - 1 - d): s.y -= d; s.adopt(s.x, s.y - 1); break
+                return
         sp = math.sqrt(p["a"] ** 2 * math.sin(s.theta) ** 2 + p["b"] ** 2 * math.cos(s.theta) ** 2)
         nt = s.theta + s.rsign / max(0.5, sp)
         if not p["closed"] and (nt < p["d0"] or nt > p["d1"]): s.rsign = -s.rsign; return
@@ -248,7 +284,7 @@ class Cat:
         if blocked: s.rsign = -s.rsign; return
         if nx != s.x: s.dir = 1 if nx > s.x else -1
         s.theta = nt % (2 * math.pi) if p["closed"] else nt
-        s.plane = 1 if math.sin(s.theta) > 0 else 2
+        s.plane = s.path_lane(s.rail, math.sin(s.theta) > 0)
         s.x, s.y = nx, ny
     def walk(s):
         s.walk_step()
@@ -267,16 +303,17 @@ class Cat:
             s.x = nx; s.y += h; return
         s.x = nx
         for d in range(4):
-            if lv.is_solid(s.x, s.y - 1 - d): s.y -= d; return
+            if lv.is_support(s.x, s.y - 1 - d): s.y -= d; s.adopt(s.x, s.y - 1); return
         s.state = "fall"; s.fd = 0
     def floating(s): return s.state == "fall" and s.chute and s.fd >= 12
     def fall(s):
         sp = 1 if s.floating() else 3
         for _ in range(sp):
-            if s.lv.is_solid(s.x, s.y - 1):
+            if s.lv.is_support(s.x, s.y - 1):
                 if s.fd > 60 and not s.chute: s.state = "splat"
                 else:
                     s.state = "walk"
+                    s.adopt(s.x, s.y - 1)
                     if s.plane == 1 and s.y <= s.lv.front_y: s.plane = 2
                 return
             if s.try_land_rail(): return
@@ -289,7 +326,7 @@ class Cat:
         if lv.has_hard(s.x - 4, s.y - 1, s.x + 5, s.y): s.state = "walk"; return
         lv.carve_rect(s.x - 4, s.y - 1, s.x + 5, s.y); s.y -= 1
     def block(s):
-        if not s.lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0
+        if not s.lv.is_support(s.x, s.y - 1): s.state = "fall"; s.fd = 0
     def solid_ahead(s, dist, lo, hi):
         for i in range(1, dist + 1):
             cx = s.x + s.dir * i
@@ -331,7 +368,7 @@ class Cat:
         if not lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0
     def build(s):
         lv = s.lv
-        if not lv.is_solid(s.x, s.y - 1): s.state = "fall"; s.fd = 0; return
+        if not lv.is_support(s.x, s.y - 1): s.state = "fall"; s.fd = 0; return
         if s.steps > 0:
             nx = s.x + s.dir
             if nx < lv.ax0 or nx >= lv.ax1: s.dir = -s.dir; s.state = "walk"; return
@@ -443,12 +480,21 @@ if __name__ == "__main__":
     base = reach([], "none"); after = reach(plan, "zoomies")
     ok = (not base) and after
     print(("OK   " if ok else "FAIL ") + f"L02     back edge between taps and vase: unreachable without Zoomies ({not base}), reachable after Zoomies through the vase ({after})"); allok &= ok
-    g2 = Game(2, [
-        (lambda g, c: c.state == "rail" and _m.sin(c.theta) < -0.5 and c.dir == 1 and 455 <= c.x <= 470, "HairballBridge"),
-        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge"),
-        (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")])
-    r2 = g2.run()[0]; ok = r2.get("saved", 0) >= 1
-    print(("OK   " if ok else "FAIL ") + f"L02     a Hairball Bridge off the rim end gets a kitten onto the vanity counter {r2}"); allok &= ok
+    # stairs from the rim: the OTHER kittens must follow them (they used to loop the rim for ever)
+    plan = [(lambda g, c: c.state == "rail" and _m.sin(c.theta) < -0.5 and c.dir == 1 and 455 <= c.x <= 470, "HairballBridge"),
+            (lambda g, c: c.state == "build" and c.balls <= 2, "HairballBridge")]
+    g2 = Game(2, plan); g2.max_ticks = 30 * 200; o = Cat.tick; climbers = set()
+    def t_(c_):
+        o(c_)
+        if c_.state in ("walk", "fall") and c_.x > 500 and c_.y > 215: climbers.add(id(c_))
+    Cat.tick = t_; r2 = g2.run()[0]; Cat.tick = o
+    ok = len(climbers) >= 3; print(("OK   " if ok else "FAIL ") + f"L02     other kittens follow the fur stairs off the rim: {len(climbers)} kittens climbed them {r2}"); allok &= ok
+    # ...and a Fluffchute makes the drop off the bridge survivable (kittens that run on before it is finished still fall
+    # through the gap - that is a puzzle for the player: wait for the bridge or use Mum/blockers)
+    plan2 = plan + [(lambda g, c: c.state == "fall" and c.x > 485 and c.fd >= 20 and not c.chute, "Fluffchute")] * 12
+    g2 = Game(2, plan2); g2.max_ticks = 30 * 200; r2 = g2.run()[0]
+    ok = r2.get("saved", 0) >= 1 and all(c.state != "splat" for c in g2.all if c.chute)
+    print(("OK   " if ok else "FAIL ") + f"L02     Fluffchute kittens never splat off the bridge, at least one reaches the counter {r2}"); allok &= ok
     allok &= check(3, "Baker in front of the cliff", [(walking_near(470, 480, 184), "BiscuitBaker")])
     allok &= check(4, "Zoomies next to the wall", [(walking_near(310, 318, 112, 1), "Zoomies")])
     allok &= check(5, "Climber for every cat", [(lambda g, c: not c.hasclimb and c.state in ("walk", "fall"), "CurtainClimber")] * 10)
