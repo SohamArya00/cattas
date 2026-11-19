@@ -1490,6 +1490,17 @@ namespace Cattas
                 }
             }
 
+            // U Lab: fold a long flat room into a doll-house U
+            if (Resources.Load<TextAsset>("Art/ushape_pano") != null)
+            {
+                float uw = fs * 11f, uh = fs * 2.2f;
+                if (GUI.Button(new Rect(fs * 2f + fs * 11f, Screen.height - uh - fs * 0.7f, uw, uh), "U Lab (fold test)", new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.8f) }))
+                {
+                    StartUnfoldLab();
+                    return;
+                }
+            }
+
             // Little helpers for testing
             float hb = fs * 9f, hh = fs * 1.8f;
             var tiny = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.7f) };
@@ -1510,6 +1521,18 @@ namespace Cattas
             ClearLevel();
             mode = GameMode.Silk;
             var lab = gameObject.AddComponent<SilkLab>();
+            lab.Init(cam, KittenRig, () =>
+            {
+                SetupCamera();
+                mode = GameMode.Menu;
+            });
+        }
+
+        void StartUnfoldLab()
+        {
+            ClearLevel();
+            mode = GameMode.Silk;
+            var lab = gameObject.AddComponent<UnfoldLab>();
             lab.Init(cam, KittenRig, () =>
             {
                 SetupCamera();
