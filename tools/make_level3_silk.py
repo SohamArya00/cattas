@@ -40,6 +40,7 @@ back_left = [(x, y + FEET_OFF, z) for x, y, z in back_left]; back_right = [(x, y
 pts = back_left + [(399.5, 600.5, 0.4)] + [(x, y, 0.0) for x, y in front] + [(1120, 624.0, 0.2)] + back_right
 TUNNEL = [(1124, 624), (1170, 629), (1218, 634), (1275, 640), (1331, 646), (1370, 645), (1402, 645), (1436, 649), (1466, 653), (1505, 651), (1545, 648)]
 HOLE = (1545, 648)
+DRAWERS = [(1125, 555, 1222, 593), (1125, 595, 1222, 630), (1125, 632, 1222, 662), (1224, 563, 1287, 662), (1290, 563, 1360, 662), (1364, 575, 1475, 616), (1364, 618, 1475, 658), (1364, 661, 1475, 716)]
 FLOOR = [(1650, 781), (1600, 769), (1560, 757), (1500, 758), (1450, 762), (1300, 766), (1200, 765), (1100, 760), (900, 754), (700, 752), (560, 751)]
 txt = f"""// Silk Lab: the Doll House loop. Kittens walk the top dais tier all the way round: the front lip, round the vanity end, behind the bath, behind the planter.
 // control points are picture pixels (y down); z = 0 in front of the bath/planter, 1 behind them. The picture is never changed.
@@ -60,6 +61,8 @@ txt += "\n".join(f"t {x:.2f} {y:.2f} 0" for x, y in TUNNEL) + "\n"
 txt += "// FLOOR in front of the vanity, right to left (kittens that drop out of the hole walk it and turn round at the ends)\n"
 txt += "\n".join(f"f {x:.2f} {y:.2f} 0" for x, y in FLOOR) + "\n"
 txt += f"hole {HOLE[0]} {HOLE[1]}\n"
+txt += "// DRAWERS and doors that rattle when a Zoomies kitten tunnels past (picture px). The stool is in front of the lower left ones, so those are cut short.\n"
+txt += "\n".join(f"drawer {a} {b} {c} {d}" for a, b, c, d in DRAWERS) + "\n"
 open(os.path.join(LEVELS, "silk_dollhouse.txt"), "w", newline="\n").write(txt)
 rev = src.convert("RGB"); ov = Image.new("RGBA", (W, H), (0, 0, 0, 0)); ov.paste((0, 255, 255, 90), mask=m); rev = Image.alpha_composite(rev.convert("RGBA"), ov); rd = ImageDraw.Draw(rev)
 rd.line([(x, y) for x, y, z in pts] + [(pts[0][0], pts[0][1])], fill=(255, 255, 0, 255), width=2)

@@ -96,3 +96,12 @@ f 900.00 754.00 0
 f 700.00 752.00 0
 f 560.00 751.00 0
 hole 1545 648
+// DRAWERS and doors that rattle when a Zoomies kitten tunnels past (picture px). The stool is in front of the lower left ones, so those are cut short.
+drawer 1125 555 1222 593
+drawer 1125 595 1222 630
+drawer 1125 632 1222 662
+drawer 1224 563 1287 662
+drawer 1290 563 1360 662
+drawer 1364 575 1475 616
+drawer 1364 618 1475 658
+drawer 1364 661 1475 716

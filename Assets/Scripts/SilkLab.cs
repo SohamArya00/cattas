@@ -28,6 +28,7 @@ namespace Cattas
         float picW, picH, kittenScale = 3f, baseSpeed = 70f, zoomSpeed = 190f, squash = 0.3f, spawnGap = 1.3f;
         int count = 10;
         Vector2 planter = new Vector2(505f, 520f), dive = new Vector2(1121f, 624f), hole = new Vector2(1545f, 648f);
+        readonly List<Rect> drawerRects = new List<Rect>();      // picture px (x0, y0, w, h; y down)
         readonly List<Vector3> loopPts = new List<Vector3>(), tunnelPts = new List<Vector3>(), floorPts = new List<Vector3>();
 
         // A route = dense samples + cumulative WORLD distance
@@ -117,10 +118,15 @@ namespace Cattas
             public int dir = 1;          // +1 / -1 along open routes
             public float speedMul = 1f;
             public bool flip, zoomies;
-            public float fallY, fallVel, fallX, fallTo;
+            public float fallY, fallVel, fallX, fallTo, lastDust;
         }
 
-        class Puff { public Transform t; public SpriteRenderer sr; public Vector2 vel; public float life, age, size; }
+        // A drawer front or door: a copy of its own pixels from the picture, laid exactly on top of the original (so it is invisible),
+        // that jiggles when a tunnelling kitten passes. The picture itself is never changed.
+        class Drawer { public Transform t; public SpriteRenderer sr; public Rect rect; public Vector2 home; public float energy, phase; }
+        readonly List<Drawer> drawers = new List<Drawer>();
+
+        class Puff { public Transform t; public SpriteRenderer sr; public Vector2 vel; public float life, age, size, alpha; }
 
         Transform root;
         LineRenderer loopLine, tunnelLine, floorLine;
@@ -170,6 +176,7 @@ namespace Cattas
                     case "planter": planter = new Vector2(F(p[1]), F(p[2])); break;
                     case "dive": dive = new Vector2(F(p[1]), F(p[2])); break;
                     case "hole": hole = new Vector2(F(p[1]), F(p[2])); break;
+                    case "drawer": drawerRects.Add(new Rect(F(p[1]), F(p[2]), F(p[3]) - F(p[1]), F(p[4]) - F(p[2]))); break;
                     case "p": loopPts.Add(new Vector3(F(p[1]), F(p[2]), F(p[3]))); break;
                     case "t": tunnelPts.Add(new Vector3(F(p[1]), F(p[2]), F(p[3]))); break;
                     case "f": floorPts.Add(new Vector3(F(p[1]), F(p[2]), F(p[3]))); break;
@@ -210,6 +217,19 @@ namespace Cattas
                 sr.material = GameBootstrap.SpriteMaterial;
                 sr.sortingOrder = OrderBackground;
                 MakeOccluder(bg);
+                foreach (var r in drawerRects)
+                {
+                    var dgo = new GameObject("Drawer");
+                    dgo.transform.SetParent(root, false);
+                    var dsr = dgo.AddComponent<SpriteRenderer>();
+                    float by = picH - (r.y + r.height);
+                    dsr.sprite = Sprite.Create(bg, new Rect(r.x, by, r.width, r.height), Vector2.zero, 1f);
+                    dsr.material = GameBootstrap.SpriteMaterial;
+                    dsr.sortingOrder = OrderBackground + 1;
+                    dsr.enabled = false;
+                    dgo.transform.position = new Vector3(r.x, by, 0f);
+                    drawers.Add(new Drawer { t = dgo.transform, sr = dsr, rect = r, home = new Vector2(r.x, by), phase = Random.Range(0f, 6f) });
+                }
             }
 
             loopLine = MakeLine("Loop line", loop, new Color(1f, 1f, 0.2f, 0.9f), true);
@@ -363,13 +383,14 @@ namespace Cattas
                     if (k.zoomies && tunnel.s != null && before > loop.total - 120f && after < before && after < 120f)
                     {
                         Dust(new Vector2(dive.x + 4f, dive.y - 10f), 14, 90f);
-                        k.mode = Mode.Tunnel; k.w = 0f;
+                        k.mode = Mode.Tunnel; k.w = 0f; k.lastDust = 0f;
                         k.wrapper.gameObject.SetActive(false);                  // hidden inside the vanity
                     }
                     break;
                 }
                 case Mode.Tunnel:
                     k.w += zoomSpeed * dt;
+                    TunnelFx(k);
                     if (k.w >= tunnel.total)
                     {
                         Dust(hole, 18, 140f);                                   // pop! out of the hole in the end panel
@@ -397,8 +418,39 @@ namespace Cattas
             }
         }
 
+        // While a kitten is inside the vanity: dust leaks out of the seams behind it, and the drawers it passes rattle
+        void TunnelFx(Walker k)
+        {
+            Vector3 pos; Vector2 dir;
+            tunnel.At(k.w, out pos, out dir);
+            if (k.w - k.lastDust > 16f)
+            {
+                k.lastDust = k.w;
+                Dust(new Vector2(pos.x - 6f, pos.y + Random.Range(-16f, 20f)), 2, 28f, 0.55f, 0.6f);
+            }
+            foreach (var d in drawers)
+            {
+                float outside = Mathf.Max(d.rect.xMin - pos.x, pos.x - d.rect.xMax, 0f);      // 0 while the kitten is behind this drawer
+                float near = Mathf.Clamp01(1f - outside / 40f);
+                if (near > d.energy) d.energy = near;
+            }
+        }
+
+        void UpdateDrawers(float dt)
+        {
+            float t = Time.time;
+            foreach (var d in drawers)
+            {
+                d.energy = Mathf.Max(0f, d.energy - dt * 2.2f);
+                if (d.energy < 0.03f) { d.sr.enabled = false; continue; }
+                d.sr.enabled = true;
+                float a = d.energy;
+                d.t.position = new Vector3(d.home.x + Mathf.Sin(t * 52f + d.phase) * 2.0f * a, d.home.y + Mathf.Sin(t * 67f + d.phase * 1.7f) * 1.3f * a, 0f);
+            }
+        }
+
         // little puffs of dust
-        void Dust(Vector2 at, int n, float speed)
+        void Dust(Vector2 at, int n, float speed, float sizeMul = 1f, float alphaMul = 1f)
         {
             for (int i = 0; i < n; i++)
             {
@@ -409,7 +461,7 @@ namespace Cattas
                 sr.material = GameBootstrap.SpriteMaterial;
                 sr.sortingOrder = OrderFx;
                 float a = Random.Range(0f, Mathf.PI * 2f);
-                var p = new Puff { t = go.transform, sr = sr, vel = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(0.3f, 1f) * speed, life = Random.Range(0.4f, 0.8f), size = Random.Range(0.5f, 1.2f) };
+                var p = new Puff { t = go.transform, sr = sr, vel = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(0.3f, 1f) * speed, life = Random.Range(0.4f, 0.8f), size = Random.Range(0.5f, 1.2f) * sizeMul, alpha = alphaMul };
                 go.transform.position = new Vector3(at.x, picH - at.y, 0f);
                 puffs.Add(p);
             }
@@ -426,7 +478,7 @@ namespace Cattas
                 p.t.position += (Vector3)(p.vel * dt);
                 p.vel *= 1f - 3f * dt;
                 p.t.localScale = Vector3.one * (p.size * (1f + u * 1.8f));
-                p.sr.color = new Color(1f, 0.9f, 0.75f, (1f - u) * 0.8f);
+                p.sr.color = new Color(1f, 0.9f, 0.75f, (1f - u) * 0.8f * p.alpha);
             }
         }
 
@@ -440,6 +492,7 @@ namespace Cattas
             if (spawned < count && spawnTimer >= spawnGap) { spawnTimer = 0f; Spawn(); }
             foreach (var k in walkers) { Step(k, dt); Place(k); }
             UpdatePuffs(dt);
+            UpdateDrawers(dt);
             if (loopLine != null) loopLine.enabled = showPath;
             if (tunnelLine != null) tunnelLine.enabled = showPath;
             if (floorLine != null) floorLine.enabled = showPath;
