@@ -23,10 +23,21 @@ occ = Image.new("RGBA", (W, H), (255, 255, 255, 0)); occ.putalpha(m); occ.save(o
 
 tr = json.load(open(os.path.join(HERE, "level3_trace.json")))
 front = [p for p in next(r for r in tr["ribbons"] if r["name"] == "dais top tier lip")["points"]][::5]      # every 40 px
-pts = [(500, 592, 1.0), (462, 593, 1.0), (432, 595, 0.85), (412, 599, 0.5)]
-pts += [(x, y, 0.0) for x, y in front]
-pts += [(1113, 613, 0.2), (1101, 601, 0.7), (1078, 593, 1.0), (1030, 591, 1.0), (940, 589.5, 1.0), (850, 588.5, 1.0), (760, 588.5, 1.0),
-        (670, 589.5, 1.0), (590, 591, 1.0), (540, 592, 1.0)]
+# BACK LINE = the black line where the tier floor meets the wall. Measured to sub-pixel by snapping to the darkest thin row (see
+# tools/snap_wall_line.py output in the notes); it is NOT a smooth curve: the wall steps back at x~440 and has an inside corner at x~570.
+# Behind the bath (x 640-975) it can't be seen, so it runs straight between the visible ends. Kittens walk FEET_OFF px in front of it.
+FEET_OFF = 2.5
+def yA(x): return 596.6 - 0.0528 * (x - 400)          # left wall piece, x 400-436 (rises to the right)
+def yB(x): return 587.6 - 0.0546 * (x - 442)          # next piece, x 442-570 (planter hides 460-540)
+def yR(x): return 612.0 + 0.1029 * (x - 1016)         # right wall piece, x 1016-1120 (comes forward to the right)
+meas_C = [(577, 581.0), (585, 581.8), (593, 582.6), (601, 583.5), (609, 584.0), (617, 584.8), (625, 585.6), (633, 586.3)]
+def yD(x): return 586.3 + (606.7 - 586.3) * (x - 633) / (975 - 633)     # hidden behind the bath: straight line between the visible ends
+back_left = [(x, yB(x), 1.0) for x in (500, 480, 460, 448)] + [(441.5, 587.9, 1.0), (438.5, 593.5, 1.0), (435, yA(435), 1.0)] + [(x, yA(x), 0.9) for x in (425, 412, 402)]
+back_right = [(x, yR(x), 1.0) for x in (1116, 1100, 1080, 1060, 1040, 1022)] + [(1013, 610.0, 1.0), (1008, 607.5, 1.0), (995, 607.0, 1.0), (975, 606.7, 1.0)]
+back_right += [(x, yD(x), 1.0) for x in (915, 855, 795, 735, 675, 645)] + [(x, y, 1.0) for x, y in reversed(meas_C)]
+back_right += [(569, 580.8, 1.0), (561, 581.0, 1.0), (553, 581.2, 1.0), (545, 581.7, 1.0), (528, yB(528), 1.0)]
+back_left = [(x, y + FEET_OFF, z) for x, y, z in back_left]; back_right = [(x, y + FEET_OFF, z) for x, y, z in back_right]
+pts = back_left + [(399.5, 600.5, 0.4)] + [(x, y, 0.0) for x, y in front] + [(1120, 624.0, 0.2)] + back_right
 txt = f"""// Silk Lab: the Doll House loop. Kittens walk the top dais tier all the way round: the front lip, round the vanity end, behind the bath, behind the planter.
 // control points are picture pixels (y down); z = 0 in front of the bath/planter, 1 behind them. The picture is never changed.
 picture level3_bg
@@ -44,5 +55,5 @@ rev = src.convert("RGB"); ov = Image.new("RGBA", (W, H), (0, 0, 0, 0)); ov.paste
 rd.line([(x, y) for x, y, z in pts] + [(pts[0][0], pts[0][1])], fill=(255, 255, 0, 255), width=2)
 for x, y, z in pts: rd.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(255, 0, 0, 255) if z > 0.5 else (0, 255, 0, 255))
 rev.convert("RGB").save(os.path.join(HERE, "level3_silk_review.png"))
-rev.convert("RGB").crop((340, 480, 1180, 680)).resize((1680, 400), Image.LANCZOS).save("/tmp/claude-0/-home-user/aa41efe8-b221-55ba-806c-ebb39c188a45/scratchpad/silk_rev_crop.png")
+rev.convert("RGB").crop((380, 560, 700, 640)).resize((1600, 400), Image.LANCZOS).save("/tmp/claude-0/-home-user/aa41efe8-b221-55ba-806c-ebb39c188a45/scratchpad/silk_rev_crop.png")
 print(len(pts), "control points")
