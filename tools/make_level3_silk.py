@@ -53,7 +53,7 @@ depth_squash 0.30
 count 10
 spawn_gap 1.3
 planter 505 520
-zoom_speed 190
+zoom_speed 125
 dive 1121 624
 """ + "\n".join(f"p {x:.2f} {y:.2f} {z:.2f}" for x, y, z in pts) + "\n"
 txt += "// ZOOMIES TUNNEL through the vanity: follows Codi's purple line along the drawers, then out of the hole in the end panel (picture px)\n"

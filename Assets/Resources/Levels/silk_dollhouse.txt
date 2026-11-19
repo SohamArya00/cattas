@@ -9,7 +9,7 @@ depth_squash 0.30
 count 10
 spawn_gap 1.3
 planter 505 520
-zoom_speed 190
+zoom_speed 125
 dive 1121 624
 p 500.00 586.93 1.00
 p 480.00 588.03 1.00

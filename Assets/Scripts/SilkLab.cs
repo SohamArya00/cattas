@@ -107,7 +107,7 @@ namespace Cattas
         Route loop = new Route(), tunnel = new Route(), floor = new Route();
         float diveW;
 
-        enum Mode { Drop, Loop, Tunnel, Pop, Floor }
+        enum Mode { Drop, Loop, Tunnel, Peek, Pop, Floor, Block }
 
         class Walker
         {
@@ -115,10 +115,10 @@ namespace Cattas
             public CatPuppet puppet;
             public Mode mode = Mode.Drop;
             public float w;              // world distance along the current route
-            public int dir = 1;          // +1 / -1 along open routes
+            public int dir = 1;          // +1 / -1 along the route
             public float speedMul = 1f;
-            public bool flip, zoomies;
-            public float fallY, fallVel, fallX, fallTo, lastDust;
+            public bool flip, zoomies, onFloor;
+            public float fallY, fallVel, fallX, fallTo, vx, lastDust, peekT;
         }
 
         // A drawer front or door: a copy of its own pixels from the picture, laid exactly on top of the original (so it is invisible),
@@ -126,7 +126,7 @@ namespace Cattas
         class Drawer { public Transform t; public SpriteRenderer sr; public Rect rect; public Vector2 home; public float energy, phase; }
         readonly List<Drawer> drawers = new List<Drawer>();
 
-        class Puff { public Transform t; public SpriteRenderer sr; public Vector2 vel; public float life, age, size, alpha; }
+        class Puff { public Transform t; public SpriteRenderer sr; public Vector2 vel; public float life, age, size, alpha, flat; }
 
         Transform root;
         LineRenderer loopLine, tunnelLine, floorLine;
@@ -137,7 +137,9 @@ namespace Cattas
         float spawnTimer;
         int spawned, zoomiesLeft = 5;
         float timeScale = 1f;
-        bool paused, showPath, armedZoomies;
+        bool paused, showPath, armedZoomies, armedBaker, holeOpen;
+        int bakersLeft = 5;
+        Transform holeGo; float holePop;
         Rect panelRect;
         Vector2 camCenter;            // picture px, y up (world)
         float viewH, fitH;           // visible height in picture px; fitH = the whole picture
@@ -341,13 +343,25 @@ namespace Cattas
                     Apply(k, p, p.z, Scale(p.y), k.flip);
                     return;
                 }
+                case Mode.Peek:
+                {
+                    // the little head pops out of the hole: rises and grows into place
+                    float e = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(k.peekT / 0.5f));
+                    var p = new Vector3(hole.x, hole.y + (1f - e) * 14f, 0f);
+                    k.puppet.state = CatState.Walking;
+                    Apply(k, p, 0f, Scale(p.y) * Mathf.Lerp(0.35f, 1f, e), false);
+                    return;
+                }
+                case Mode.Tunnel:
+                    return;                                                      // hidden inside the vanity
                 case Mode.Loop:
                     loop.At(k.w, out pos, out dir);
+                    dir *= k.dir;
                     break;
-                case Mode.Tunnel:
-                    tunnel.At(k.w, out pos, out dir);
-                    Apply(k, pos, 0f, Scale(pos.y), false);
-                    return;
+                case Mode.Block:
+                    (k.onFloor ? floor : loop).At(k.w, out pos, out dir);
+                    dir *= k.dir;
+                    break;
                 default:
                     floor.At(k.w, out pos, out dir);
                     dir *= k.dir;
@@ -355,7 +369,7 @@ namespace Cattas
             }
             // face the way we're walking; near corners (mostly into/out of the screen) keep the last facing
             if (Mathf.Abs(dir.x) > 0.25f * dir.magnitude) k.flip = dir.x < 0f;
-            k.puppet.state = k.zoomies ? CatState.Zooming : CatState.Walking;
+            k.puppet.state = k.mode == Mode.Block ? CatState.Blocking : k.zoomies ? CatState.Zooming : CatState.Walking;
             Apply(k, pos, Mathf.Clamp01(pos.z), Scale(pos.y), k.flip);
         }
 
@@ -370,6 +384,25 @@ namespace Cattas
             k.puppet.SetColor(new Color(shade, shade, shade, 1f));
         }
 
+        // Is a Biscuit Baker just ahead of this kitten on its route?
+        bool BlockedAhead(Walker k, Route r)
+        {
+            foreach (var b in walkers)
+            {
+                if (b == k || b.mode != Mode.Block || b.onFloor != k.onFloor) continue;
+                float delta = (b.w - k.w) * k.dir;
+                if (r.closed) delta = Mathf.Repeat(delta, r.total);
+                if (delta > 0f && delta < 30f) return true;
+            }
+            return false;
+        }
+
+        float FloorY(float x)
+        {
+            floor.At(floor.DistanceAtX(x), out var p, out var d);
+            return p.y;
+        }
+
         void Step(Walker k, float dt)
         {
             switch (k.mode)
@@ -377,45 +410,55 @@ namespace Cattas
                 case Mode.Drop:
                     k.fallVel += 900f * dt;
                     k.fallY += k.fallVel * dt;
-                    if (k.fallY >= k.fallTo) { k.mode = Mode.Loop; k.w = 0f; }
+                    if (k.fallY >= k.fallTo) { k.mode = Mode.Loop; k.w = 0f; k.dir = 1; }
                     break;
                 case Mode.Loop:
                 {
+                    if (BlockedAhead(k, loop)) k.dir = -k.dir;                   // a Biscuit Baker in the way: turn round
                     float before = Mathf.Repeat(k.w - diveW, loop.total);
-                    k.w += baseSpeed * k.speedMul * (k.zoomies ? 2.2f : 1f) * dt;
+                    k.w += k.dir * baseSpeed * k.speedMul * (k.zoomies ? 1.7f : 1f) * dt;
                     float after = Mathf.Repeat(k.w - diveW, loop.total);
-                    // a Zoomies kitten that reaches the vanity digs straight into it
-                    if (k.zoomies && tunnel.s != null && before > loop.total - 120f && after < before && after < 120f)
+                    // reaching the vanity: a Zoomies kitten digs in; once the hole is open, every kitten takes the tunnel
+                    if (k.dir == 1 && tunnel.s != null && (k.zoomies || holeOpen) && before > loop.total - 120f && after < before && after < 120f)
                     {
-                        Dust(new Vector2(dive.x + 4f, dive.y - 10f), 14, 90f);
+                        Dust(new Vector2(dive.x + 4f, dive.y - 10f), k.zoomies ? 14 : 8, 90f);
                         k.mode = Mode.Tunnel; k.w = 0f; k.lastDust = 0f;
                         k.wrapper.gameObject.SetActive(false);                  // hidden inside the vanity
                     }
                     break;
                 }
                 case Mode.Tunnel:
-                    k.w += zoomSpeed * dt;
+                    k.w += (k.zoomies ? zoomSpeed : baseSpeed * 1.1f) * dt;
                     TunnelFx(k);
                     if (k.w >= tunnel.total)
                     {
-                        Dust(hole, 18, 140f);                                   // pop! out of the hole in the end panel
-                        k.mode = Mode.Pop; k.fallX = hole.x; k.fallY = hole.y; k.fallVel = -120f;
-                        floor.At(floor.DistanceAtX(hole.x), out var fp, out var fd);
-                        k.fallTo = fp.y; k.flip = false;
+                        OpenHole();
+                        Dust(hole, 12, 90f, 0.9f);                              // a hole appears and a head pops out
+                        k.mode = Mode.Peek; k.peekT = 0f;
+                        k.puppet.Pop();
                         k.wrapper.gameObject.SetActive(true);
+                    }
+                    break;
+                case Mode.Peek:
+                    k.peekT += dt;
+                    if (k.peekT >= 0.65f)
+                    {
+                        k.mode = Mode.Pop; k.fallX = hole.x; k.fallY = hole.y; k.fallVel = -250f; k.vx = 55f; k.flip = false;      // ...and jumps down
                     }
                     break;
                 case Mode.Pop:
                     k.fallVel += 900f * dt;
                     k.fallY += k.fallVel * dt;
-                    if (k.fallY >= k.fallTo)
+                    k.fallX += k.vx * dt;
+                    if (k.fallVel > 0f && k.fallY >= FloorY(k.fallX))
                     {
-                        Dust(new Vector2(k.fallX, k.fallTo), 6, 60f);
-                        k.mode = Mode.Floor; k.zoomies = false;
+                        Dust(new Vector2(k.fallX, FloorY(k.fallX)), 6, 60f);
+                        k.mode = Mode.Floor; k.zoomies = false; k.onFloor = true;
                         k.w = floor.DistanceAtX(k.fallX); k.dir = -1;    // set off along the floor towards the middle of the room
                     }
                     break;
                 case Mode.Floor:
+                    if (BlockedAhead(k, floor)) k.dir = -k.dir;
                     k.w += k.dir * baseSpeed * k.speedMul * dt;
                     if (k.w <= 0f) { k.w = 0f; k.dir = 1; }
                     else if (k.w >= floor.total) { k.w = floor.total; k.dir = -1; }
@@ -423,22 +466,75 @@ namespace Cattas
             }
         }
 
-        // While a kitten is inside the vanity: dust leaks out of the seams behind it, and the drawers it passes rattle
+        // The tunnel runs through the MIDDLE/REAR of the cabinet, so nothing floats in front of the drawers:
+        // the kitten is hidden, the drawers it passes rattle, and dust only squeezes out of the cracks between the drawers.
         void TunnelFx(Walker k)
         {
             Vector3 pos; Vector2 dir;
             tunnel.At(k.w, out pos, out dir);
-            if (k.w - k.lastDust > 16f)
-            {
-                k.lastDust = k.w;
-                Dust(new Vector2(pos.x - 6f, pos.y + Random.Range(-16f, 20f)), 2, 28f, 0.55f, 0.6f);
-            }
+            bool leak = k.w - k.lastDust > 12f;
+            if (leak) k.lastDust = k.w;
             foreach (var d in drawers)
             {
                 float outside = Mathf.Max(d.rect.xMin - pos.x, pos.x - d.rect.xMax, 0f);      // 0 while the kitten is behind this drawer
                 float near = Mathf.Clamp01(1f - outside / 40f);
                 if (near > d.energy) d.energy = near;
+                if (leak && outside < 8f)
+                    Dust(new Vector2(pos.x + Random.Range(-10f, 10f), d.rect.yMax), 1, 16f, 0.5f, 0.55f, 1f, 14f);     // a thin sift of dust from the crack under this drawer
             }
+        }
+
+        // The hole in the end panel stays for good (all following kittens use the tunnel), plus a small mark where it starts
+        void OpenHole()
+        {
+            if (holeOpen) return;
+            holeOpen = true;
+            var sprite = MakeHoleSprite();
+            holeGo = new GameObject("Hole in the end panel").transform;
+            holeGo.SetParent(root, false);
+            holeGo.position = new Vector3(hole.x, picH - hole.y, 0f);
+            var sr = holeGo.gameObject.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite; sr.material = GameBootstrap.SpriteMaterial; sr.sortingOrder = OrderBackground + 2;
+            var mouth = new GameObject("Tunnel mouth").transform;
+            mouth.SetParent(root, false);
+            mouth.position = new Vector3(dive.x + 2f, picH - dive.y + 4f, 0f);
+            mouth.localScale = Vector3.one * 0.45f;
+            var msr = mouth.gameObject.AddComponent<SpriteRenderer>();
+            msr.sprite = sprite; msr.material = GameBootstrap.SpriteMaterial; msr.sortingOrder = OrderBackground + 2;
+            holePop = 0f;
+        }
+
+        Sprite MakeHoleSprite()
+        {
+            const int W = 64, H = 48;
+            var tex = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    float nx = (x + 0.5f - W / 2f) / (W / 2f - 3f), ny = (y + 0.5f - H / 2f) / (H / 2f - 3f);
+                    float ang = Mathf.Atan2(ny, nx);
+                    float jag = 1f + 0.07f * Mathf.Sin(ang * 9f) + 0.05f * Mathf.Sin(ang * 17f + 1f);       // ragged, splintery edge
+                    float r = Mathf.Sqrt(nx * nx + ny * ny) / jag;
+                    Color c;
+                    if (r > 1.12f) c = new Color(0, 0, 0, 0);
+                    else if (r > 0.8f)
+                    {
+                        float u = (r - 0.8f) / 0.32f;
+                        c = Color.Lerp(new Color(0.88f, 0.55f, 0.27f), new Color(0.45f, 0.24f, 0.1f), u);        // raw wood rim
+                        c.a = Mathf.Clamp01((1.12f - r) / 0.06f);
+                    }
+                    else
+                    {
+                        float g = (ny + 1f) * 0.5f;
+                        c = Color.Lerp(new Color(0.07f, 0.03f, 0.02f), new Color(0.22f, 0.1f, 0.05f), g * g);      // deep and dark
+                    }
+                    px[y * W + x] = c;
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false);
+            textures.Add(tex);
+            return Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W / 34f);
         }
 
         void UpdateDrawers(float dt)
@@ -455,7 +551,7 @@ namespace Cattas
         }
 
         // little puffs of dust
-        void Dust(Vector2 at, int n, float speed, float sizeMul = 1f, float alphaMul = 1f)
+        void Dust(Vector2 at, int n, float speed, float sizeMul = 1f, float alphaMul = 1f, float flat = 0f, float down = 0f)
         {
             for (int i = 0; i < n; i++)
             {
@@ -466,7 +562,8 @@ namespace Cattas
                 sr.material = GameBootstrap.SpriteMaterial;
                 sr.sortingOrder = OrderFx;
                 float a = Random.Range(0f, Mathf.PI * 2f);
-                var p = new Puff { t = go.transform, sr = sr, vel = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(0.3f, 1f) * speed, life = Random.Range(0.4f, 0.8f), size = Random.Range(0.5f, 1.2f) * sizeMul, alpha = alphaMul };
+                var p = new Puff { t = go.transform, sr = sr, vel = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(0.3f, 1f) * speed, life = Random.Range(0.4f, 0.8f), size = Random.Range(0.5f, 1.2f) * sizeMul, alpha = alphaMul, flat = flat };
+                p.vel.y -= down;
                 go.transform.position = new Vector3(at.x, picH - at.y, 0f);
                 puffs.Add(p);
             }
@@ -482,8 +579,9 @@ namespace Cattas
                 float u = p.age / p.life;
                 p.t.position += (Vector3)(p.vel * dt);
                 p.vel *= 1f - 3f * dt;
-                p.t.localScale = Vector3.one * (p.size * (1f + u * 1.8f));
-                p.sr.color = new Color(1f, 0.9f, 0.75f, (1f - u) * 0.8f * p.alpha);
+                float grow = p.size * (1f + u * 1.8f);
+                p.t.localScale = p.flat > 0f ? new Vector3(grow * 1.8f, grow * 0.4f, 1f) : Vector3.one * grow;
+                p.sr.color = p.flat > 0f ? new Color(0.85f, 0.72f, 0.55f, (1f - u) * 0.8f * p.alpha) : new Color(1f, 0.9f, 0.75f, (1f - u) * 0.8f * p.alpha);
             }
         }
 
@@ -500,6 +598,7 @@ namespace Cattas
             foreach (var k in walkers) { Step(k, dt); Place(k); }
             UpdatePuffs(dt);
             UpdateDrawers(dt);
+            if (holeGo != null && holePop < 1f) { holePop = Mathf.Min(1f, holePop + dt * 3f); float pp = holePop < 0.6f ? holePop / 0.6f * 1.25f : Mathf.Lerp(1.25f, 1f, (holePop - 0.6f) / 0.4f); holeGo.localScale = Vector3.one * pp; }
             if (loopLine != null) loopLine.enabled = showPath;
             if (tunnelLine != null) tunnelLine.enabled = showPath;
             if (floorLine != null) floorLine.enabled = showPath;
@@ -598,22 +697,31 @@ namespace Cattas
 #endif
             if (escape) { Exit(); return; }
             CameraControls(mouse, wheel, key, keyZoom, dragHeld, dragStart);
-            if (!click || !armedZoomies || zoomiesLeft <= 0) return;
+            if (!click || !(armedZoomies || armedBaker)) return;
             if (panelRect.Contains(new Vector2(mouse.x, Screen.height - mouse.y))) return;       // that click was on a button
             Vector3 world = cam.ScreenToWorldPoint(new Vector3(mouse.x, mouse.y, -cam.transform.position.z));
             Walker best = null; float bestD = 60f;
             foreach (var k in walkers)
             {
-                if (k.mode != Mode.Loop || k.zoomies) continue;
+                bool ok = armedZoomies ? (k.mode == Mode.Loop && !k.zoomies) : (k.mode == Mode.Loop || k.mode == Mode.Floor);
+                if (!ok) continue;
                 float dx = k.wrapper.position.x - world.x, dy = k.wrapper.position.y + kittenScale * 5f - world.y;
                 float dd = Mathf.Sqrt(dx * dx + dy * dy);
                 if (dd < bestD) { bestD = dd; best = k; }
             }
             if (best == null) return;
-            best.zoomies = true;
-            zoomiesLeft--;
             Dust(new Vector2(best.wrapper.position.x, picH - best.wrapper.position.y - 10f), 8, 70f);
-            if (zoomiesLeft <= 0) armedZoomies = false;
+            if (armedZoomies)
+            {
+                best.zoomies = true;
+                if (--zoomiesLeft <= 0) armedZoomies = false;
+            }
+            else
+            {
+                best.onFloor = best.mode == Mode.Floor;                  // sits down where it is and kneads biscuits
+                best.mode = Mode.Block;
+                if (--bakersLeft <= 0) armedBaker = false;
+            }
         }
 
         // ---------- screen controls ----------
@@ -636,7 +744,9 @@ namespace Cattas
             if (GUI.Button(new Rect(x, y, bw, bh), paused ? "Resume" : "Pause", buttonStyle)) paused = !paused; y += bh + m * 0.5f;
             if (GUI.Button(new Rect(x, y, bw, bh), showPath ? "Hide route lines" : "Show route lines", buttonStyle)) showPath = !showPath; y += bh + m * 0.5f;
             string zt = zoomiesLeft <= 0 ? "Zoomies: none left" : armedZoomies ? $"ZOOMIES ON - click a kitten ({zoomiesLeft})" : $"Zoomies ({zoomiesLeft} left)";
-            if (GUI.Button(new Rect(x, y, bw * 1.5f, bh), zt, buttonStyle) && zoomiesLeft > 0) armedZoomies = !armedZoomies; y += bh + m * 0.5f;
+            if (GUI.Button(new Rect(x, y, bw * 1.5f, bh), zt, buttonStyle) && zoomiesLeft > 0) { armedZoomies = !armedZoomies; armedBaker = false; } y += bh + m * 0.5f;
+            string bt = bakersLeft <= 0 ? "Biscuit Baker: none left" : armedBaker ? $"BAKER ON - click a kitten ({bakersLeft})" : $"Biscuit Baker ({bakersLeft} left)";
+            if (GUI.Button(new Rect(x, y, bw * 1.5f, bh), bt, buttonStyle) && bakersLeft > 0) { armedBaker = !armedBaker; armedZoomies = false; } y += bh + m * 0.5f;
             GUI.Label(new Rect(x, y, bw * 1.5f, bh), $"Speed x{timeScale:0.00}", labelStyle); y += bh * 0.8f;
             timeScale = GUI.HorizontalSlider(new Rect(x, y, bw * 1.4f, bh * 0.5f), timeScale, 0.1f, 3f); y += bh * 0.8f;
             if (GUI.Button(new Rect(x, y, bw, bh), "Restart kittens", buttonStyle)) Restart();
@@ -654,8 +764,12 @@ namespace Cattas
             foreach (var k in walkers) if (k.wrapper != null) Destroy(k.wrapper.gameObject);
             walkers.Clear();
             spawned = 0;
-            zoomiesLeft = 5;
-            armedZoomies = false;
+            zoomiesLeft = 5; bakersLeft = 5;
+            armedZoomies = armedBaker = false;
+            holeOpen = false;
+            if (holeGo != null) Destroy(holeGo.gameObject);
+            holeGo = null;
+            foreach (var t in root.GetComponentsInChildren<Transform>()) if (t != null && t.name == "Tunnel mouth") Destroy(t.gameObject);
             spawnTimer = spawnGap;
         }
 
