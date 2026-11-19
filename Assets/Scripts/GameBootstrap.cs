@@ -1501,6 +1501,17 @@ namespace Cattas
                 }
             }
 
+            // Scroll Lab: three screens joined into one level
+            if (Resources.Load<TextAsset>("Levels/scroll_test") != null)
+            {
+                float cw = fs * 12f, ch = fs * 2.2f;
+                if (GUI.Button(new Rect(fs * 3f + fs * 22f, Screen.height - ch - fs * 0.7f, cw, ch), "Scroll Lab (3 screens)", new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.8f) }))
+                {
+                    StartScrollLab();
+                    return;
+                }
+            }
+
             // Little helpers for testing
             float hb = fs * 9f, hh = fs * 1.8f;
             var tiny = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.7f) };
@@ -1533,6 +1544,18 @@ namespace Cattas
             ClearLevel();
             mode = GameMode.Silk;
             var lab = gameObject.AddComponent<UnfoldLab>();
+            lab.Init(cam, KittenRig, () =>
+            {
+                SetupCamera();
+                mode = GameMode.Menu;
+            });
+        }
+
+        void StartScrollLab()
+        {
+            ClearLevel();
+            mode = GameMode.Silk;
+            var lab = gameObject.AddComponent<ScrollLab>();
             lab.Init(cam, KittenRig, () =>
             {
                 SetupCamera();
