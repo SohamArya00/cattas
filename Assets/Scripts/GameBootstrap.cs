@@ -1020,7 +1020,7 @@ namespace Cattas
                 shakeOffset = Random.insideUnitCircle * shakeAmount;
             }
             else shakeOffset = Vector2.zero;
-            if (mode != GameMode.Menu) ApplyCamera();
+            if (mode != GameMode.Menu && mode != GameMode.Silk) ApplyCamera();     // the Silk Lab drives its own camera
         }
 
         void GameTick()

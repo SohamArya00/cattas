@@ -139,6 +139,9 @@ namespace Cattas
         float timeScale = 1f;
         bool paused, showPath, armedZoomies;
         Rect panelRect;
+        Vector2 camCenter;            // picture px, y up (world)
+        float viewH, fitH;           // visible height in picture px; fitH = the whole picture
+        bool dragging; Vector2 dragLast;
         string pictureName = "level3_bg", occluderName = "level3_occl";
 
         public void Init(Camera camera, CatRig kittenRig, System.Action exit)
@@ -239,8 +242,10 @@ namespace Cattas
             // fit the whole picture on screen
             float aspect = Mathf.Max(0.5f, Screen.width / (float)Screen.height);
             cam.orthographic = true;
-            cam.orthographicSize = Mathf.Max(picH / 2f, picW / 2f / aspect);
-            cam.transform.position = new Vector3(picW / 2f, picH / 2f, -10f);
+            fitH = Mathf.Max(picH, picW / aspect);
+            viewH = fitH;
+            camCenter = new Vector2(picW / 2f, picH / 2f);
+            ApplyCam();
             cam.backgroundColor = new Color(0.1f, 0.07f, 0.06f);
         }
 
@@ -486,6 +491,8 @@ namespace Cattas
         {
             if (cam == null) return;
             ReadInput();
+            if (cam == null || root == null) return;
+            ApplyCam();                      // also copes with the window being resized
             if (paused) return;
             float dt = Time.deltaTime * timeScale;
             spawnTimer += dt;
@@ -498,21 +505,99 @@ namespace Cattas
             if (floorLine != null) floorLine.enabled = showPath;
         }
 
+        // ---------- camera: wheel / +- = zoom, arrows / WASD / right-drag / screen edges = scroll ----------
+        void ApplyCam()
+        {
+            float aspect = Mathf.Max(0.5f, Screen.width / (float)Screen.height);
+            fitH = Mathf.Max(picH, picW / aspect);
+            viewH = Mathf.Clamp(viewH, 180f, fitH);
+            float vw = viewH * aspect;
+            float hx = Mathf.Max(0f, (picW - vw) / 2f), hy = Mathf.Max(0f, (picH - viewH) / 2f);
+            camCenter.x = Mathf.Clamp(camCenter.x, picW / 2f - hx, picW / 2f + hx);
+            camCenter.y = Mathf.Clamp(camCenter.y, picH / 2f - hy, picH / 2f + hy);
+            cam.orthographicSize = viewH / 2f;
+            cam.transform.position = new Vector3(camCenter.x, camCenter.y, -10f);
+        }
+
+        void ZoomBy(float factor, Vector2 screenPoint)
+        {
+            Vector3 before = cam.ScreenToWorldPoint(new Vector3(screenPoint.x, screenPoint.y, -cam.transform.position.z));
+            viewH *= factor;
+            ApplyCam();
+            Vector3 after = cam.ScreenToWorldPoint(new Vector3(screenPoint.x, screenPoint.y, -cam.transform.position.z));
+            camCenter += new Vector2(before.x - after.x, before.y - after.y);     // keep the point under the mouse where it was
+            ApplyCam();
+        }
+
+        void CameraControls(Vector2 mouse, float wheel, Vector2 key, float keyZoom, bool dragHeld, bool dragStart)
+        {
+            float dt = Time.unscaledDeltaTime;
+            bool overPanel = panelRect.Contains(new Vector2(mouse.x, Screen.height - mouse.y));
+            if (!Mathf.Approximately(wheel, 0f) && !overPanel) ZoomBy(Mathf.Pow(0.88f, wheel), mouse);
+            if (!Mathf.Approximately(keyZoom, 0f)) ZoomBy(Mathf.Pow(0.4f, keyZoom * dt), new Vector2(Screen.width / 2f, Screen.height / 2f));
+            Vector2 pan = key;
+            // push the mouse to the edge of the screen to scroll (not over the button panel)
+            if (!overPanel && Application.isFocused)
+            {
+                float edge = Mathf.Max(8f, Screen.height * 0.02f);
+                if (mouse.x >= 0 && mouse.x < Screen.width && mouse.y >= 0 && mouse.y < Screen.height)
+                {
+                    if (mouse.x > Screen.width - edge) pan.x += 1f; else if (mouse.x < edge && mouse.x > 0f && mouse.y > panelRect.height) pan.x -= 1f;
+                    if (mouse.y > Screen.height - edge) pan.y += 1f; else if (mouse.y < edge) pan.y -= 1f;
+                }
+            }
+            if (pan != Vector2.zero) { camCenter += pan.normalized * viewH * 0.9f * dt; ApplyCam(); }
+            if (dragStart) { dragging = true; dragLast = mouse; }
+            if (!dragHeld) dragging = false;
+            if (dragging)
+            {
+                Vector2 delta = mouse - dragLast; dragLast = mouse;
+                camCenter -= delta * (viewH / Screen.height);
+                ApplyCam();
+            }
+        }
+
         void ReadInput()
         {
-            bool escape = false, click = false;
-            Vector2 mouse = Vector2.zero;
+            bool escape = false, click = false, dragHeld = false, dragStart = false;
+            Vector2 mouse = Vector2.zero, key = Vector2.zero;
+            float wheel = 0f, keyZoom = 0f;
 #if ENABLE_INPUT_SYSTEM
             var kb = UnityEngine.InputSystem.Keyboard.current;
             var ms = UnityEngine.InputSystem.Mouse.current;
             if (kb != null) escape = kb.escapeKey.wasPressedThisFrame;
-            if (ms != null) { click = ms.leftButton.wasPressedThisFrame; mouse = ms.position.ReadValue(); }
+            if (ms != null)
+            {
+                click = ms.leftButton.wasPressedThisFrame; mouse = ms.position.ReadValue();
+                wheel = ms.scroll.ReadValue().y / 120f;
+                dragHeld = ms.rightButton.isPressed || ms.middleButton.isPressed;
+                dragStart = ms.rightButton.wasPressedThisFrame || ms.middleButton.wasPressedThisFrame;
+            }
+            if (kb != null)
+            {
+                if (kb.leftArrowKey.isPressed || kb.aKey.isPressed) key.x -= 1f;
+                if (kb.rightArrowKey.isPressed || kb.dKey.isPressed) key.x += 1f;
+                if (kb.upArrowKey.isPressed || kb.wKey.isPressed) key.y += 1f;
+                if (kb.downArrowKey.isPressed || kb.sKey.isPressed) key.y -= 1f;
+                if (kb.equalsKey.isPressed || kb.numpadPlusKey.isPressed) keyZoom += 1f;
+                if (kb.minusKey.isPressed || kb.numpadMinusKey.isPressed) keyZoom -= 1f;
+            }
 #else
             escape = Input.GetKeyDown(KeyCode.Escape);
             click = Input.GetMouseButtonDown(0);
             mouse = Input.mousePosition;
+            wheel = Input.mouseScrollDelta.y;
+            dragHeld = Input.GetMouseButton(1) || Input.GetMouseButton(2);
+            dragStart = Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
+            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) key.x -= 1f;
+            if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) key.x += 1f;
+            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W)) key.y += 1f;
+            if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S)) key.y -= 1f;
+            if (Input.GetKey(KeyCode.Equals)) keyZoom += 1f;
+            if (Input.GetKey(KeyCode.Minus)) keyZoom -= 1f;
 #endif
             if (escape) { Exit(); return; }
+            CameraControls(mouse, wheel, key, keyZoom, dragHeld, dragStart);
             if (!click || !armedZoomies || zoomiesLeft <= 0) return;
             if (panelRect.Contains(new Vector2(mouse.x, Screen.height - mouse.y))) return;       // that click was on a button
             Vector3 world = cam.ScreenToWorldPoint(new Vector3(mouse.x, mouse.y, -cam.transform.position.z));
@@ -555,6 +640,11 @@ namespace Cattas
             GUI.Label(new Rect(x, y, bw * 1.5f, bh), $"Speed x{timeScale:0.00}", labelStyle); y += bh * 0.8f;
             timeScale = GUI.HorizontalSlider(new Rect(x, y, bw * 1.4f, bh * 0.5f), timeScale, 0.1f, 3f); y += bh * 0.8f;
             if (GUI.Button(new Rect(x, y, bw, bh), "Restart kittens", buttonStyle)) Restart();
+            y += bh + m * 0.5f;
+            if (GUI.Button(new Rect(x, y, bw, bh), "Fit whole picture", buttonStyle)) { viewH = fitH; camCenter = new Vector2(picW / 2f, picH / 2f); ApplyCam(); }
+            y += bh * 0.7f;
+            GUI.Label(new Rect(x, y, bw * 2.2f, bh * 1.4f), "Wheel/+-: zoom   Arrows/WASD: scroll\nRight-drag or screen edge: scroll", labelStyle);
+            y += bh * 1.4f;
             y += bh;
             panelRect = new Rect(0, 0, bw * 1.5f + m * 2f, y + m);
         }
