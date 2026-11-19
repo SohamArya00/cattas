@@ -1,0 +1,44 @@
+// Silk Lab: the Doll House loop. Kittens walk the top dais tier all the way round: the front lip, round the vanity end, behind the bath, behind the planter.
+// control points are picture pixels (y down); z = 0 in front of the bath/planter, 1 behind them. The picture is never changed.
+picture level3_bg
+size 1672 941
+occluder level3_occl
+kitten_scale 3.0
+speed 90
+depth_squash 0.30
+count 10
+spawn_gap 1.3
+planter 505 520
+p 500.00 592.00 1.00
+p 462.00 593.00 1.00
+p 432.00 595.00 0.85
+p 412.00 599.00 0.50
+p 398.00 604.00 0.00
+p 438.00 606.70 0.00
+p 478.00 613.02 0.00
+p 518.00 619.27 0.00
+p 558.00 625.36 0.00
+p 598.00 631.32 0.00
+p 638.00 637.07 0.00
+p 678.00 642.33 0.00
+p 718.00 646.67 0.00
+p 758.00 649.95 0.00
+p 798.00 651.36 0.00
+p 838.00 651.22 0.00
+p 878.00 648.89 0.00
+p 918.00 645.25 0.00
+p 958.00 641.34 0.00
+p 998.00 637.58 0.00
+p 1038.00 633.84 0.00
+p 1078.00 629.93 0.00
+p 1118.00 626.65 0.00
+p 1113.00 613.00 0.20
+p 1101.00 601.00 0.70
+p 1078.00 593.00 1.00
+p 1030.00 591.00 1.00
+p 940.00 589.50 1.00
+p 850.00 588.50 1.00
+p 760.00 588.50 1.00
+p 670.00 589.50 1.00
+p 590.00 591.00 1.00
+p 540.00 592.00 1.00

@@ -64,6 +64,7 @@ namespace Cattas
         // Set by the Cat every game step
         [HideInInspector] public CatState state = CatState.Falling;
         [HideInInspector] public bool flip, floating, hacking;
+        [HideInInspector] public float moveScale = 1f;   // 1 / how many times bigger than normal the kitten is drawn (keeps the stride right)
         [HideInInspector] public bool mother;    // the big mother cat at the exit: sits and watches
         float pop;                              // "ta-da" bounce when given a trait (or when mum is happy)
 
@@ -157,7 +158,7 @@ namespace Cattas
             float dt = Time.deltaTime, t = Time.time + seed;
             Vector3 wp = transform.position;
             if (!started) { lastPos = wp; started = true; }
-            float moved = (wp - lastPos).magnitude;
+            float moved = (wp - lastPos).magnitude * moveScale;
             lastPos = wp;
             if (moved > 4f) moved = 0f; // a jump (e.g. starting to climb) isn't a step
 

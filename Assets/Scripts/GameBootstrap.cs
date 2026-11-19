@@ -16,7 +16,7 @@ namespace Cattas
         // How far we are between one game step and the next (0..1) - used to make movement smooth.
         public static float TickAlpha { get; private set; }
 
-        enum GameMode { Menu, Preview, Playing, Results }
+        enum GameMode { Menu, Preview, Playing, Results, Silk }
         GameMode mode = GameMode.Menu;
 
         Camera cam;
@@ -971,7 +971,7 @@ namespace Cattas
         // ---------- Game loop ----------
         void Update()
         {
-            if (mode == GameMode.Menu || levelRoot == null) return;
+            if (mode == GameMode.Menu || mode == GameMode.Silk || levelRoot == null) return;
 
             KeyboardCamera();
             EdgeScroll();
@@ -1418,6 +1418,7 @@ namespace Cattas
                 case GameMode.Preview: DrawPreview(); break;
                 case GameMode.Playing: DrawPlaying(); break;
                 case GameMode.Results: DrawPlaying(); DrawResults(); break;
+                case GameMode.Silk: break;     // the Silk Lab draws its own buttons
             }
         }
 
@@ -1478,6 +1479,17 @@ namespace Cattas
             }
             GUI.enabled = oldEnabled;
 
+            // Silk Lab: the 2.5D test world (Doll House loop)
+            if (Resources.Load<TextAsset>("Levels/silk_dollhouse") != null)
+            {
+                float sw = fs * 11f, sh = fs * 2.2f;
+                if (GUI.Button(new Rect(fs, Screen.height - sh - fs * 0.7f, sw, sh), "Silk Lab (2.5D test)", new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.8f) }))
+                {
+                    StartSilkLab();
+                    return;
+                }
+            }
+
             // Little helpers for testing
             float hb = fs * 9f, hh = fs * 1.8f;
             var tiny = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.7f) };
@@ -1491,6 +1503,18 @@ namespace Cattas
                 PlayerPrefs.DeleteAll();
                 PlayerPrefs.Save();
             }
+        }
+
+        void StartSilkLab()
+        {
+            ClearLevel();
+            mode = GameMode.Silk;
+            var lab = gameObject.AddComponent<SilkLab>();
+            lab.Init(cam, KittenRig, () =>
+            {
+                SetupCamera();
+                mode = GameMode.Menu;
+            });
         }
 
         static int CountBits(int v) { int n = 0; while (v != 0) { n += v & 1; v >>= 1; } return n; }
