@@ -14,6 +14,9 @@ Codi works with human artists (and uses AI art as a placeholder). **Never add, r
 **EXCEPTION (Codi, 2026-11-16): the Level 2 bathroom picture (`tools/art_sources/bathroom_level2_1960s.webp`) is a TEST BED and I may amend it** (e.g. rounded-surface cues, extra layers). Keep the untouched original in `tools/art_sources/`, write amended versions as new files, and still tell Codi what changed. The rule above still applies to every other picture.
 Gameplay must work by putting **invisible collision, markers and logic on top of the untouched art**. If the art makes a level hard to build, describe the problem and ask Codi what they'd like. Source pictures in `tools/art_sources/` stay byte-for-byte as supplied.
 
+## 2.5D direction (current)
+Levels will be **three pictures joined and scrolled** (left at ~45 degrees, middle flat, right at ~45 degrees). No folding/3D. See `docs/DESIGN.md` (bottom) and `docs/THREE_SCREEN_ART_BRIEF.md`. The Silk/Scroll Labs are test beds reached from the menu buttons at the bottom-left.
+
 ## Working style
 - Codi runs Unity on Windows (Alienware x16). Claude works in a cloud session and can't run Unity, so every change must be tested by them pressing Play. Write code carefully and defensively.
 - Game logic is pixel-grid based and deterministic (30 ticks/sec in `GameBootstrap`). Keep visuals separate from rules.

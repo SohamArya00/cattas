@@ -155,3 +155,36 @@ A cosy house where trophies, unlocked skins and collectibles are displayed (it c
 - [ ] Levels 11–100, NG+, cosmetics, home hub
 - [ ] Phone / handheld port
 - [ ] Level builder
+
+
+---
+## Update 2026-11 (Codi's recap) - story, goals and the 2.5D direction
+
+### New story: "Honey, I Shrunk the Kittens"
+- Opening cinematic: kittens are born; camera zooms from outside the house to inside; zoomies, yarn balls, kitty stuff. Then the **character builder**
+  (colour, breed, whiskers, tail length; or import your own cat from side + front, sitting + standing photos). The kittens match the build.
+- Cut back to the cinematic: a scientist carries covered cages up to the attic; reverse zoom to the room where level 1 starts.
+- Levels 1-5 teach the traits (2 per level). Levels 6-10 are beginner puzzles. Level 9 = the staircase to the attic. **Level 10 = the first boss, in the attic lab.**
+- Boss 1: while the owner sleeps on the sofa in science gear the kittens let an experiment cat out of its cage. Send **10 Cable Chewers** (exploders), perfectly timed,
+  at the escaped cat. He rolls back into a machine that **shrinks all the animals and scatters them**. The kittens land in the **garden shed** and must get back to the attic,
+  past the other 9 bosses, and use the machine to resize everyone.
+- Reward for the first boss: a **golden trait** (NG0: one per round, NG+1: two, and so on). First use of a gold trait in a level plays a cut-scene (about 5 variations per trait).
+- Silly Lu Lu (spicy-taco fire-fart flying kitten that explodes like a firework) can be used to take down the hanging boss on level 20.
+- After level 5 every level starts with 100 cattas. Mice pop their heads out (click them) as little side quests.
+
+### Trait wish-list additions
+Gold traits: Nine Lives, Catta-copter (spinning tail), Catnip (see all Easter eggs), Furball, Teleport, Circus cannon through a flaming hoop, Meme-of-the-day,
+Spicy Fart Catta, Bring the Fallen Home (all dead/blocking kittens bounce home).
+Old-game names for reference only: Digger/Floater/Blocker/Miner/Climber/Basher/Bomber/Builder = Scratcher/Fluffchute/Biscuit Baker/(Miner)/Curtain Climber/(Basher)/Cable Chewer/Hairball Bridge.
+
+### 2.5D direction (decided over this session)
+- Tried: Silk Lab (a loop round the dais, tunnel through the vanity), U Lab (fold flat panorama into a 3D U), Scroll Lab (three joined screens).
+- **Decision (Codi): NO folding, no real 3D.** A level is **three pictures joined and scrolled left to right**: LEFT screen drawn at about 45 degrees (biggest at the far left,
+  shrinking to the corner), MIDDLE screen flat, RIGHT screen the mirror of the left. Every point on the kitten route carries a perspective scale and a squash factor,
+  so kittens shrink/slow towards the corner and grow/speed up away from it. See `docs/THREE_SCREEN_ART_BRIEF.md`, `tools/make_scroll_template.py`, `ScrollLab.cs`.
+- Art rules (from the ChatGPT brief): three completely separate images (left / back / right); left = toilet + fixtures receding at 45 degrees; back = bath, window, stepped dais;
+  right = vanity, mirror, tall cabinet receding at 45 degrees; **no skewing or stretching of images** (the 45 degrees must be drawn into the architecture);
+  visible horizontal surfaces to walk on; maximum resolution, long panoramic proportions; matching colours, tile size, lighting, floor height and corner connections.
+- Kitten art needed for the 45 degree sides: 3/4 walking views (towards and away), mirrored for left/right.
+- Engine plan ("Silk"): float positions, 60 Hz sim with interpolation, smooth ribbon routes traced from the art with `tools/trace_level3.py`-style edge snapping,
+  depth lanes + occluder masks (things kittens walk behind), hidden tunnels with dust + drawer rattles (Zoomies), permanent holes, Biscuit Bakers that turn kittens round.
