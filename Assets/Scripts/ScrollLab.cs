@@ -23,6 +23,8 @@ namespace Cattas
         float screenW = 1920f, screenH = 1080f, kittenRigScale = 3.4f, baseSpeed = 95f, spawnGap = 1.5f;
         int count = 8;
         readonly List<string> screenNames = new List<string>();
+        readonly List<float> screenWidths = new List<float>();     // world width of each screen (all the same height)
+        string resourceName = "Levels/scroll_test";
         readonly List<Vector4> controls = new List<Vector4>();       // x, y (px, y down), scale, squash
         Vector4[] sample; float[] dist; float total;
 
@@ -40,12 +42,13 @@ namespace Cattas
 
         class Walker { public Transform wrapper; public CatPuppet puppet; public float w, speed; public int dir = 1; public bool flip; }
 
-        float StripW => screenW * screenNames.Count;
+        float StripW { get { float t = 0f; foreach (var w in screenWidths) t += w; return t; } }
+        float UI => screenH / 1080f;                                // keeps scroll speeds sensible whatever the picture size
 
-        public void Init(Camera camera, CatRig kittenRig, System.Action exit)
+        public void Init(Camera camera, CatRig kittenRig, System.Action exit, string resource = "Levels/scroll_test")
         {
-            cam = camera; rig = kittenRig; onExit = exit;
-            if (!Load("Levels/scroll_test")) { Debug.LogError("Cattas: Scroll Lab data missing"); Exit(); return; }
+            cam = camera; rig = kittenRig; onExit = exit; resourceName = resource;
+            if (!Load(resource)) { Debug.LogError("Cattas: Scroll Lab data missing"); Exit(); return; }
             Build();
         }
 
@@ -62,7 +65,9 @@ namespace Cattas
                 var p = line.Split(new[] { ' ', '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
                 switch (p[0])
                 {
-                    case "screens": screenW = F(p[1]); screenH = F(p[2]); for (int i = 3; i < p.Length; i++) screenNames.Add(p[i]); break;
+                    case "screens": screenW = F(p[1]); screenH = F(p[2]); for (int i = 3; i < p.Length; i++) { screenNames.Add(p[i]); screenWidths.Add(screenW); } break;
+                    case "size": screenH = F(p[1]); break;
+                    case "screen": screenNames.Add(p[1]); screenWidths.Add(F(p[2])); break;
                     case "kitten": kittenRigScale = F(p[1]); break;
                     case "speed": baseSpeed = F(p[1]); break;
                     case "count": count = int.Parse(p[1], CultureInfo.InvariantCulture); break;
@@ -117,16 +122,18 @@ namespace Cattas
             BuildRoute();
             root = new GameObject("Scroll Lab").transform;
             root.SetParent(transform, false);
+            float xOff = 0f;
             for (int i = 0; i < screenNames.Count; i++)
             {
                 var tex = Art.Load(screenNames[i]);
+                float myX = xOff; xOff += screenWidths[i];
                 if (tex == null) continue;
                 textures.Add(tex);
                 var go = new GameObject("Screen " + (i + 1));
                 go.transform.SetParent(root, false);
-                go.transform.position = new Vector3(i * screenW, 0f, 0f);
+                go.transform.position = new Vector3(myX, 0f, 0f);
                 var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero, tex.width / screenW);
+                sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero, tex.width / screenWidths[i]);
                 sr.material = GameBootstrap.SpriteMaterial;
                 sr.sortingOrder = -10;
             }
@@ -243,13 +250,13 @@ namespace Cattas
             float dt = Time.unscaledDeltaTime;
             bool overPanel = panelRect.Contains(new Vector2(mouse.x, Screen.height - mouse.y));
             float move = 0f;
-            move += key * 1100f * dt;
-            if (!overPanel) move -= wheel * 420f;
+            move += key * 1100f * UI * dt;
+            if (!overPanel) move -= wheel * 420f * UI;
             // push the mouse to the left/right edge of the screen to scroll
             if (!overPanel && Application.isFocused && mouse.x >= 0 && mouse.x < Screen.width && mouse.y >= 0 && mouse.y < Screen.height)
             {
                 float edge = Mathf.Max(8f, Screen.width * 0.015f);
-                if (mouse.x > Screen.width - edge) move += 1100f * dt; else if (mouse.x < edge) move -= 1100f * dt;
+                if (mouse.x > Screen.width - edge) move += 1100f * UI * dt; else if (mouse.x < edge) move -= 1100f * UI * dt;
             }
             if (dragStart && !overPanel) { dragging = true; lastMouse = mouse; }
             if (!dragHeld) dragging = false;
@@ -288,11 +295,15 @@ namespace Cattas
             panelRect = new Rect(0, 0, bw * 1.6f + m * 2f, y + m);
 
             // the little map of all three screens along the bottom
-            float mapW = Mathf.Min(Screen.width * 0.5f, 900f), mapH = mapW / (screenNames.Count * screenW / screenH);
+            float mapW = Mathf.Min(Screen.width * 0.5f, 900f), mapH = mapW / (StripW / screenH);
             var map = new Rect((Screen.width - mapW) / 2f, Screen.height - mapH - m, mapW, mapH);
-            float segW = mapW / screenNames.Count;
+            float segX = map.x;
             for (int i = 0; i < textures.Count && i < screenNames.Count; i++)
-                GUI.DrawTexture(new Rect(map.x + i * segW, map.y, segW, mapH), textures[i], ScaleMode.StretchToFill);
+            {
+                float segW = mapW * screenWidths[i] / StripW;
+                GUI.DrawTexture(new Rect(segX, map.y, segW, mapH), textures[i], ScaleMode.StretchToFill);
+                segX += segW;
+            }
             float mapScale = mapW / StripW;
             var old = GUI.color;
             GUI.color = new Color(1f, 1f, 0.3f, 1f);

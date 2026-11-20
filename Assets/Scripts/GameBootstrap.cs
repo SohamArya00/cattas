@@ -1512,6 +1512,17 @@ namespace Cattas
                 }
             }
 
+            // Scroll Demo: the three ChatGPT pictures joined (flat)
+            if (Resources.Load<TextAsset>("Levels/scroll_demo") != null)
+            {
+                float dw2 = fs * 12f, dh2 = fs * 2.2f;
+                if (GUI.Button(new Rect(fs * 4f + fs * 34f, Screen.height - dh2 - fs * 0.7f, dw2, dh2), "Scroll Demo (ChatGPT art)", new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.8f) }))
+                {
+                    StartScrollLab("Levels/scroll_demo");
+                    return;
+                }
+            }
+
             // Little helpers for testing
             float hb = fs * 9f, hh = fs * 1.8f;
             var tiny = new GUIStyle(button) { fontSize = Mathf.RoundToInt(fs * 0.7f) };
@@ -1551,7 +1562,7 @@ namespace Cattas
             });
         }
 
-        void StartScrollLab()
+        void StartScrollLab(string resource = "Levels/scroll_test")
         {
             ClearLevel();
             mode = GameMode.Silk;
@@ -1560,7 +1571,7 @@ namespace Cattas
             {
                 SetupCamera();
                 mode = GameMode.Menu;
-            });
+            }, resource);
         }
 
         static int CountBits(int v) { int n = 0; while (v != 0) { n += v & 1; v >>= 1; } return n; }
